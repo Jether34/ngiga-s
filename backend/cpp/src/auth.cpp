@@ -222,11 +222,18 @@ void registerAuthRoutes() {
             if (!body) { callback(error(k400BadRequest, "Invalid JSON body")); return; }
             auto name = field(*body, "name"), phone = field(*body, "phone");
             auto section = field(*body, "section"), address = field(*body, "home_address");
-            auto email = field(*body, "email"), accountId = field(*body, "student_id");
-            auto year = field(*body, "year_level");
+            auto email = field(*body, "email");
+            const auto accountId = user["account_id"].asString();
+            const auto year = user["year_level"].asString();
             const auto program = user["program"].asString();
             if (body->isMember("program") && field(*body, "program") != program) {
                 callback(error(k403Forbidden, "Program cannot be changed")); return;
+            }
+            if (body->isMember("student_id") && field(*body, "student_id") != accountId) {
+                callback(error(k403Forbidden, "Student ID cannot be changed")); return;
+            }
+            if (body->isMember("year_level") && field(*body, "year_level") != year) {
+                callback(error(k403Forbidden, "Year level cannot be changed")); return;
             }
             phone = normalizedPhone(phone);
             if (name.size() < 2 || name.size() > 100 || section.empty() || section.size() > 32 ||
@@ -240,8 +247,8 @@ void registerAuthRoutes() {
             }
             try {
                 app().getDbClient()->execSqlSync(
-                    "UPDATE users SET name=?,email=?,account_id=?,phone=?,year_level=?,section=?,home_address=? WHERE id=? AND role='STUDENT'",
-                    name, email, accountId, phone, year, section, address, user["id"].asString());
+                    "UPDATE users SET name=?,email=?,phone=?,section=?,home_address=? WHERE id=? AND role='STUDENT'",
+                    name, email, phone, section, address, user["id"].asString());
                 callback(json(currentUser(request)));
             } catch (const drogon::orm::DrogonDbException &) {
                 callback(error(k409Conflict, "Email, phone, or student ID is already in use"));

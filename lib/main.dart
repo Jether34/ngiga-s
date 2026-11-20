@@ -19,6 +19,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const apiDefault = String.fromEnvironment(
   'API_URL',
@@ -46,13 +47,25 @@ class LabApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Stockroom',
     debugShowCheckedModeBanner: false,
+    builder: (context, child) => PageGradientBackground(child: child!),
     theme: ThemeData(
       colorScheme: ColorScheme.fromSeed(
         seedColor: teal,
         primary: teal,
         surface: Colors.white,
       ),
-      scaffoldBackgroundColor: canvas,
+      scaffoldBackgroundColor: Colors.transparent,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
+      ),
       useMaterial3: true,
       cardTheme: CardThemeData(
         color: Colors.white,
@@ -177,6 +190,7 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   int tab = 0;
   String iconVariant = 'violet';
+  bool silentNotifications = false;
   List<dynamic> equipment = [], loans = [];
   List<dynamic> transactions = [], notifications = [];
   Uint8List? avatarBytes;
@@ -195,6 +209,23 @@ class _HomeState extends State<Home> {
     if (isAdmin) _connect();
     if (!isAdmin && Platform.isAndroid) _loadIconVariant();
     if (!isAdmin) _loadAvatar();
+    if (!isAdmin) _loadNotificationPreference();
+  }
+
+  Future<void> _loadNotificationPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(
+        () => silentNotifications =
+            prefs.getBool('silent_notifications') ?? false,
+      );
+    }
+  }
+
+  Future<void> _setSilentNotifications(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('silent_notifications', value);
+    if (mounted) setState(() => silentNotifications = value);
   }
 
   Future<void> _loadAvatar() async {
@@ -754,6 +785,12 @@ class _HomeState extends State<Home> {
               ? AppBar(
                   backgroundColor: isAdmin && wide ? Colors.white : navy,
                   foregroundColor: isAdmin && wide ? navy : Colors.white,
+                  systemOverlayStyle: SystemUiOverlayStyle(
+                    statusBarColor: isAdmin && wide ? Colors.white : navy,
+                    statusBarIconBrightness: isAdmin && wide
+                        ? Brightness.dark
+                        : Brightness.light,
+                  ),
                   title: Text(
                     isAdmin && wide
                         ? 'Stockroom - Campus Inventory'
@@ -821,8 +858,8 @@ class _HomeState extends State<Home> {
                                 ),
                                 child: ListTile(
                                   selected: tab == i,
-                                  selectedTileColor: AppPalette.pearl,
-                                  selectedColor: navy,
+                                  selectedTileColor: Colors.transparent,
+                                  selectedColor: AppPalette.bright,
                                   textColor: Colors.white,
                                   iconColor: Colors.white,
                                   shape: RoundedRectangleBorder(
@@ -839,6 +876,7 @@ class _HomeState extends State<Home> {
                     else
                       NavigationRail(
                         backgroundColor: Colors.white,
+                        indicatorColor: Colors.transparent,
                         selectedIndex: tab,
                         onDestinationSelected: (i) => setState(() => tab = i),
                         labelType: NavigationRailLabelType.all,
@@ -846,6 +884,10 @@ class _HomeState extends State<Home> {
                           for (final n in names)
                             NavigationRailDestination(
                               icon: Icon(iconFor(n)),
+                              selectedIcon: Icon(
+                                iconFor(n),
+                                color: AppPalette.primary,
+                              ),
                               label: Text(n),
                             ),
                         ],
@@ -881,21 +923,16 @@ class _HomeState extends State<Home> {
                           children: [
                             for (var i = 0; i < names.length; i++)
                               Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: Material(
-                                    color: tab == i
-                                        ? AppPalette.mist
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(24),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: InkWell(
-                                      overlayColor: WidgetStatePropertyAll(
-                                        AppPalette.pearl.withOpacity(.5),
-                                      ),
-                                      onTap: () => setState(() => tab = i),
-                                      child: Tooltip(
-                                        message: names[i],
+                                child: Semantics(
+                                  button: true,
+                                  selected: tab == i,
+                                  label: names[i],
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => setState(() => tab = i),
+                                    child: Tooltip(
+                                      message: names[i],
+                                      child: Center(
                                         child: Icon(
                                           iconFor(names[i]),
                                           size: 24,
@@ -924,7 +961,7 @@ class _HomeState extends State<Home> {
                   ),
                   child: NavigationBar(
                     backgroundColor: isAdmin ? navy : Colors.white,
-                    indicatorColor: AppPalette.pearl,
+                    indicatorColor: Colors.transparent,
                     selectedIndex: tab,
                     onDestinationSelected: (i) => setState(() => tab = i),
                     destinations: [
@@ -933,6 +970,10 @@ class _HomeState extends State<Home> {
                           icon: Icon(
                             iconFor(n),
                             color: isAdmin ? Colors.white : null,
+                          ),
+                          selectedIcon: Icon(
+                            iconFor(n),
+                            color: AppPalette.bright,
                           ),
                           label: n,
                         ),
@@ -2381,11 +2422,14 @@ class _HomeState extends State<Home> {
         onTap: Platform.isAndroid ? _chooseAppIcon : null,
       ),
       _settingsTile(
-        leading: const Icon(Icons.notifications_none),
-        title: const Text('Notifications'),
-        subtitle: const Text('Loan and return activity'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: _openNotifications,
+        leading: const Icon(Icons.notifications_off_outlined),
+        title: const Text('Silent notifications'),
+        subtitle: const Text('Keep future device alerts quiet'),
+        trailing: Switch.adaptive(
+          value: silentNotifications,
+          onChanged: _setSilentNotifications,
+        ),
+        onTap: () => _setSilentNotifications(!silentNotifications),
       ),
       Card(
         child: ListTile(

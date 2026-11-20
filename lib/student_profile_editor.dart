@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'app_palette.dart';
 import 'main.dart' show api;
-import 'student_programs.dart';
 import 'header_haze.dart';
 
 class StudentProfileEditor extends StatefulWidget {
@@ -16,13 +15,7 @@ class StudentProfileEditor extends StatefulWidget {
 class _StudentProfileEditorState extends State<StudentProfileEditor> {
   late final name = TextEditingController(text: '${api.user['name'] ?? ''}');
   late final email = TextEditingController(text: '${api.user['email'] ?? ''}');
-  late final studentId = TextEditingController(
-    text: '${api.user['account_id'] ?? ''}',
-  );
   late final phone = TextEditingController(text: '${api.user['phone'] ?? ''}');
-  String? year = '${api.user['year_level'] ?? ''}'.isEmpty
-      ? null
-      : '${api.user['year_level']}';
   late final section = TextEditingController(
     text: '${api.user['section'] ?? ''}',
   );
@@ -38,14 +31,7 @@ class _StudentProfileEditorState extends State<StudentProfileEditor> {
 
   @override
   void dispose() {
-    for (final controller in [
-      name,
-      email,
-      studentId,
-      phone,
-      section,
-      address,
-    ]) {
+    for (final controller in [name, email, phone, section, address]) {
       controller.dispose();
     }
     super.dispose();
@@ -53,10 +39,6 @@ class _StudentProfileEditorState extends State<StudentProfileEditor> {
 
   Future<void> save() async {
     if (saving) return;
-    if (year == null) {
-      setState(() => error = 'Choose a year level.');
-      return;
-    }
     setState(() {
       saving = true;
       error = null;
@@ -65,9 +47,9 @@ class _StudentProfileEditorState extends State<StudentProfileEditor> {
       final updated = await api.patch('/me', {
         'name': name.text.trim(),
         'email': email.text.trim(),
-        'student_id': studentId.text.trim(),
+        'student_id': api.user['account_id'],
         'phone': phone.text.trim(),
-        'year_level': year,
+        'year_level': api.user['year_level'],
         'section': section.text.trim(),
         'home_address': address.text.trim(),
       });
@@ -130,17 +112,14 @@ class _StudentProfileEditorState extends State<StudentProfileEditor> {
             ),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: year,
+          InputDecorator(
             decoration: const InputDecoration(
               labelText: 'Year level',
               border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.lock_outline),
+              helperText: 'Year level is fixed after sign up',
             ),
-            items: [
-              for (final value in yearLevels)
-                DropdownMenuItem(value: value, child: Text(value)),
-            ],
-            onChanged: (value) => setState(() => year = value),
+            child: Text('${api.user['year_level'] ?? ''}'),
           ),
           const SizedBox(height: 12),
           InputDecorator(
@@ -156,12 +135,14 @@ class _StudentProfileEditorState extends State<StudentProfileEditor> {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: studentId,
+                child: InputDecorator(
                   decoration: const InputDecoration(
                     labelText: 'Student ID',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.lock_outline),
+                    helperText: 'Student ID is fixed',
                   ),
+                  child: Text('${api.user['account_id'] ?? ''}'),
                 ),
               ),
               const SizedBox(width: 10),

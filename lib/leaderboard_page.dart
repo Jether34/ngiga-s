@@ -11,22 +11,6 @@ class LeaderboardPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     body: Stack(
       children: [
-        const Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 390,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xffd9c8f9), Color(0xffeee8fc), Colors.white],
-                stops: [0, .48, 1],
-              ),
-            ),
-          ),
-        ),
         SafeArea(
           child: Column(
             children: [

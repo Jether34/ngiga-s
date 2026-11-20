@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ngiga/auth_screen.dart';
 import 'package:ngiga/auth_policy_sheet.dart';
 import 'package:ngiga/session_store.dart';
+import 'package:ngiga/main.dart' show api;
+import 'package:ngiga/notification_page.dart';
+import 'package:ngiga/student_profile_editor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -97,6 +100,57 @@ void main() {
     await tester.tap(find.text('Privacy'));
     await tester.pumpAndSettle();
     expect(find.text('Camera and barcode scans'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('student ID and year level are visible but locked in profile', (
+    tester,
+  ) async {
+    api.user = {
+      'name': 'Student Example',
+      'email': 'student@example.com',
+      'phone': '09170000000',
+      'account_id': '2026-12345',
+      'year_level': '2nd Year',
+      'program': 'Bachelor of Science in Computer Science',
+      'section': 'TA01',
+      'home_address': 'Manila',
+    };
+    await tester.pumpWidget(
+      MaterialApp(home: StudentProfileEditor(onSaved: () {})),
+    );
+    expect(find.text('2026-12345'), findsOneWidget);
+    expect(find.text('2nd Year'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Student ID'), findsNothing);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('notification opens its complete message in a popup', (
+    tester,
+  ) async {
+    const fullMessage = 'This is the complete item return notification.';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationPage(
+          initial: [
+            {
+              'id': 'return-test',
+              'type': 'returned',
+              'title': 'Item returned',
+              'message': fullMessage,
+              'created_at': '2026-11-20 12:00:00',
+              'is_read': true,
+            },
+          ],
+          onRead: (_) {},
+        ),
+      ),
+    );
+    await tester.tap(find.text('Item returned'));
+    await tester.pumpAndSettle();
+    expect(find.text(fullMessage), findsWidgets);
+    expect(find.text('2026-11-20 12:00:00'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

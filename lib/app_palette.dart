@@ -28,4 +28,11 @@ abstract final class AppPalette {
     colors: [Color(0xffd7c6f5), Color(0xffefe7ff), Colors.white],
     stops: [0, .5, 1],
   );
+
+  static const pageGlow = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xffd9c8f9), Color(0xffeee8fc), Colors.white],
+    stops: [0, .48, 1],
+  );
 }

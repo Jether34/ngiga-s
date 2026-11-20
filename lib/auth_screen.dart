@@ -275,16 +275,6 @@ class _AuthScreenState extends State<AuthScreen> {
     ],
   );
 
-  Widget _gradient() => const Positioned(
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 190,
-    child: DecoratedBox(
-      decoration: BoxDecoration(gradient: AppPalette.topGlow),
-    ),
-  );
-
   Widget _welcome() => LayoutBuilder(
     builder: (context, constraints) {
       final h = constraints.maxHeight;
@@ -855,7 +845,7 @@ class _AuthScreenState extends State<AuthScreen> {
       statusBarIconBrightness: Brightness.dark,
     ),
     child: Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -863,7 +853,6 @@ class _AuthScreenState extends State<AuthScreen> {
             Expanded(
               child: Stack(
                 children: [
-                  _gradient(),
                   Align(
                     alignment: Alignment.topCenter,
                     child: ConstrainedBox(
