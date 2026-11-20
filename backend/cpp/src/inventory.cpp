@@ -310,11 +310,13 @@ void registerInventoryRoutes() {
             sql += " ORDER BY t.created_at DESC";
             try {
                 auto db = app().getDbClient();
-                drogon::orm::Result rows;
-                if (!equipmentId.empty() && !type.empty()) rows = db->execSqlSync(sql, equipmentId, type);
-                else if (!equipmentId.empty()) rows = db->execSqlSync(sql, equipmentId);
-                else if (!type.empty()) rows = db->execSqlSync(sql, type);
-                else rows = db->execSqlSync(sql);
+                const auto rows = !equipmentId.empty() && !type.empty()
+                    ? db->execSqlSync(sql, equipmentId, type)
+                    : !equipmentId.empty()
+                        ? db->execSqlSync(sql, equipmentId)
+                        : !type.empty()
+                            ? db->execSqlSync(sql, type)
+                            : db->execSqlSync(sql);
                 Json::Value result(Json::arrayValue);
                 for (const auto &row : rows) {
                     Json::Value tx;
