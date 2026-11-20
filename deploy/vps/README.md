@@ -2,17 +2,22 @@
 
 The API and MySQL database run in the `ngiga-stockroom` Docker Compose project. The API listens only on `127.0.0.1:8765` on the VPS. Nginx forwards `https://pns-sysnnova.cloud/stockroom-api/` to that loopback port; other applications retain their own routes and containers.
 
+MySQL is reachable only on the project's private Docker network. The API trusts the database container's CA certificate, mounted from `/opt/ngiga-stockroom/mysql-ca.pem`. The mobile app communicates with Nginx over HTTPS.
+
 The deployment uses a private `.env` file beside `compose.yml`. Supply `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `SECRET_KEY`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. Keep this file out of Git.
 
-Deploy from the repository root on the VPS:
+Deploy from `/opt/ngiga-stockroom/deploy/vps` on the VPS:
 
 ```sh
 cd /opt/ngiga-stockroom/deploy/vps
+sh ./prepare-mysql-tls.sh
 docker compose -f compose.yml build api
-docker compose -f compose.yml up -d database api
+docker compose -f compose.yml up -d api
 docker compose -f compose.yml ps
 curl -fsS http://127.0.0.1:8765/health
 ```
+
+Add `nginx-location.conf` to the existing HTTPS server block with an `include` directive, run `nginx -t`, then gracefully reload Nginx. Keep a copy of the original Nginx configuration before editing it.
 
 Build the Android release with the production endpoint and a private release signing key:
 

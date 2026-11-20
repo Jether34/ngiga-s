@@ -12,7 +12,7 @@ services:
     volumes:
       - stockroom_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -uroot --protocol=socket --silent"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -22,6 +22,7 @@ services:
       context: ../..
       dockerfile: backend/cpp/Dockerfile
     restart: unless-stopped
+    entrypoint: ["sh", "-c", "update-ca-certificates >/dev/null && exec /usr/local/bin/stockroom_api"]
     environment:
       PORT: 8000
       MYSQL_HOST: database
@@ -34,6 +35,8 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
       ADMIN_NAME: Laboratory Administrator
       ADMIN_ID: ADMIN-001
+    volumes:
+      - /opt/ngiga-stockroom/mysql-ca.pem:/usr/local/share/ca-certificates/mysql-ca.crt:ro
     ports:
       - "127.0.0.1:8765:8000"
     depends_on:
