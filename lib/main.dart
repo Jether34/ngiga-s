@@ -142,7 +142,6 @@ class _RootState extends State<Root> {
         api.user = Map<String, dynamic>.from(await api.get('/me'));
     } catch (_) {
       api.token = '';
-      await sessions.clear();
     }
     if (mounted) setState(() => ready = true);
   }
