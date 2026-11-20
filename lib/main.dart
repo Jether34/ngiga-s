@@ -7,6 +7,8 @@ import 'auth_screen.dart';
 import 'app_palette.dart';
 import 'student_profile_editor.dart';
 import 'notification_page.dart';
+import 'header_haze.dart';
+import 'session_store.dart';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -14,8 +16,8 @@ import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:image_picker/image_picker.dart';
 
 const apiDefault = String.fromEnvironment(
   'API_URL',
@@ -126,6 +128,7 @@ class Root extends StatefulWidget {
 
 class _RootState extends State<Root> {
   bool ready = false;
+  final sessions = SessionStore();
   @override
   void initState() {
     super.initState();
@@ -133,32 +136,26 @@ class _RootState extends State<Root> {
   }
 
   Future<void> _restore() async {
-    final p = await SharedPreferences.getInstance();
-    api.token = p.getString('token') ?? '';
+    api.token = await sessions.restore();
     try {
       if (api.token.isNotEmpty)
         api.user = Map<String, dynamic>.from(await api.get('/me'));
     } catch (_) {
       api.token = '';
+      await sessions.clear();
     }
     if (mounted) setState(() => ready = true);
   }
 
   void _signed(bool remember) async {
-    final p = await SharedPreferences.getInstance();
-    if (remember) {
-      await p.setString('token', api.token);
-    } else {
-      await p.remove('token');
-    }
+    await sessions.save(api.token, remember: remember);
     if (mounted) setState(() {});
   }
 
   void _logout() async {
     api.token = '';
     api.user = {};
-    final p = await SharedPreferences.getInstance();
-    await p.remove('token');
+    await sessions.clear();
     if (mounted) setState(() {});
   }
 
@@ -182,6 +179,7 @@ class _HomeState extends State<Home> {
   String iconVariant = 'violet';
   List<dynamic> equipment = [], loans = [];
   List<dynamic> transactions = [], notifications = [];
+  Uint8List? avatarBytes;
   String historyType = 'ALL';
   String historyEquipment = 'ALL';
   bool loading = true;
@@ -196,6 +194,42 @@ class _HomeState extends State<Home> {
     load();
     if (isAdmin) _connect();
     if (!isAdmin && Platform.isAndroid) _loadIconVariant();
+    if (!isAdmin) _loadAvatar();
+  }
+
+  Future<void> _loadAvatar() async {
+    try {
+      final result = await api.get('/me/avatar');
+      final encoded = '${result['image'] ?? ''}';
+      if (mounted) {
+        setState(
+          () => avatarBytes = encoded.isEmpty ? null : base64Decode(encoded),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _changeAvatar() async {
+    try {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
+      if (photo == null) return;
+      final bytes = await photo.readAsBytes();
+      if (bytes.length > 500000) {
+        throw Exception('Choose a photo smaller than 500 KB.');
+      }
+      await api.patch('/me/avatar', {'image': base64Encode(bytes)});
+      if (mounted) setState(() => avatarBytes = bytes);
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not update photo: $e')));
+    }
   }
 
   Future<void> _loadIconVariant() async {
@@ -820,7 +854,14 @@ class _HomeState extends State<Home> {
                     Expanded(child: pages[tab]),
                   ],
                 )
-              : pages[tab],
+              : isAdmin
+              ? pages[tab]
+              : Column(
+                  children: [
+                    const HeaderHaze(height: 30),
+                    Expanded(child: pages[tab]),
+                  ],
+                ),
           bottomNavigationBar: wide
               ? null
               : !isAdmin
@@ -835,7 +876,7 @@ class _HomeState extends State<Home> {
                       borderRadius: BorderRadius.circular(30),
                       clipBehavior: Clip.antiAlias,
                       child: SizedBox(
-                        height: 72,
+                        height: 60,
                         child: Row(
                           children: [
                             for (var i = 0; i < names.length; i++)
@@ -853,32 +894,15 @@ class _HomeState extends State<Home> {
                                         AppPalette.pearl.withOpacity(.5),
                                       ),
                                       onTap: () => setState(() => tab = i),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            iconFor(names[i]),
-                                            size: 23,
-                                            color: tab == i
-                                                ? AppPalette.primary
-                                                : AppPalette.muted,
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            names[i],
-                                            maxLines: 1,
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: tab == i
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
-                                              color: tab == i
-                                                  ? AppPalette.primary
-                                                  : AppPalette.muted,
-                                            ),
-                                          ),
-                                        ],
+                                      child: Tooltip(
+                                        message: names[i],
+                                        child: Icon(
+                                          iconFor(names[i]),
+                                          size: 24,
+                                          color: tab == i
+                                              ? AppPalette.primary
+                                              : AppPalette.muted,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -1013,50 +1037,32 @@ class _HomeState extends State<Home> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                height: 20,
-                color: AppPalette.mist.withOpacity(.72),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 15),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              CircleAvatar(
+                radius: 23,
+                backgroundColor: AppPalette.mist,
+                backgroundImage: avatarBytes == null
+                    ? null
+                    : MemoryImage(avatarBytes!),
+                child: avatarBytes == null
+                    ? const Icon(
+                        Icons.person_outline,
+                        color: AppPalette.primary,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Good day, ${'${api.user['name'] ?? ''}'.trim().split(' ').first}!',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold, color: navy),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '${api.user['account_id']}\n${api.user['email']}',
-                      style: const TextStyle(
-                        color: AppPalette.muted,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Good day, ${'${api.user['name'] ?? ''}'.trim().split(' ').first}!',
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800, color: navy),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              IconButton(
-                tooltip: 'Leaderboard',
-                icon: const Icon(Icons.emoji_events_outlined),
-                onPressed: _openLeaderboard,
-              ),
-              IconButton(
-                tooltip: 'History',
-                icon: const Icon(Icons.history),
-                onPressed: () => setState(() => tab = 3),
               ),
               IconButton(
                 tooltip: 'Notifications',
@@ -1067,6 +1073,32 @@ class _HomeState extends State<Home> {
                         child: const Icon(Icons.notifications_none),
                       ),
                 onPressed: _openNotifications,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Student ID  ${api.user['account_id']}',
+            style: const TextStyle(color: AppPalette.muted, fontSize: 12),
+          ),
+          Text(
+            '${api.user['email']}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppPalette.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: _openLeaderboard,
+                icon: const Icon(Icons.emoji_events_outlined, size: 19),
+                label: const Text('Leaderboard'),
+              ),
+              TextButton.icon(
+                onPressed: () => setState(() => tab = 3),
+                icon: const Icon(Icons.history, size: 19),
+                label: const Text('History'),
               ),
             ],
           ),
@@ -1403,48 +1435,52 @@ class _HomeState extends State<Home> {
       MaterialPageRoute(
         builder: (context) => Scaffold(
           appBar: AppBar(title: const Text('Leaderboard')),
-          body: FutureBuilder<dynamic>(
-            future: future,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData && !snapshot.hasError) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError)
-                return Center(
-                  child: Text('Could not load leaderboard: ${snapshot.error}'),
-                );
-              final people = List<dynamic>.from(snapshot.data as List);
-              if (people.isEmpty)
-                return const Center(child: Text('No student loans yet.'));
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: people.length,
-                itemBuilder: (context, index) => Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: AppPalette.mist,
-                      child: Text(
-                        '${index + 1}',
-                        style: const TextStyle(color: navy),
+          body: pageWithHaze(
+            FutureBuilder<dynamic>(
+              future: future,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData && !snapshot.hasError) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError)
+                  return Center(
+                    child: Text(
+                      'Could not load leaderboard: ${snapshot.error}',
+                    ),
+                  );
+                final people = List<dynamic>.from(snapshot.data as List);
+                if (people.isEmpty)
+                  return const Center(child: Text('No student loans yet.'));
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: people.length,
+                  itemBuilder: (context, index) => Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: AppPalette.mist,
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(color: navy),
+                        ),
                       ),
+                      title: Text('${people[index]['name']}'),
+                      subtitle: Text(
+                        '${people[index]['program']}\n${people[index]['year_level']} • ${people[index]['section']}\n${people[index]['borrow_count']} items borrowed',
+                      ),
+                      isThreeLine: true,
+                      trailing: index < 3
+                          ? Icon(
+                              Icons.emoji_events,
+                              color: index == 0
+                                  ? const Color(0xffd39a2e)
+                                  : AppPalette.primary,
+                            )
+                          : null,
                     ),
-                    title: Text('${people[index]['name']}'),
-                    subtitle: Text(
-                      '${people[index]['program']}\n${people[index]['year_level']} • ${people[index]['section']}\n${people[index]['borrow_count']} items borrowed',
-                    ),
-                    isThreeLine: true,
-                    trailing: index < 3
-                        ? Icon(
-                            Icons.emoji_events,
-                            color: index == 0
-                                ? const Color(0xffd39a2e)
-                                : AppPalette.primary,
-                          )
-                        : null,
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -1594,7 +1630,7 @@ class _HomeState extends State<Home> {
               crossAxisCount: MediaQuery.sizeOf(context).width < 600 ? 2 : 3,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              mainAxisExtent: 180,
+              mainAxisExtent: 196,
             ),
             itemBuilder: (context, index) {
               final item = matches[index];
@@ -1632,7 +1668,7 @@ class _HomeState extends State<Home> {
                                 message: 'Most borrowed',
                                 child: Icon(
                                   Icons.local_fire_department,
-                                  color: Color(0xffe9784d),
+                                  color: Color(0xffd85846),
                                 ),
                               ),
                           ],
@@ -1656,9 +1692,18 @@ class _HomeState extends State<Home> {
                         ),
                         const SizedBox(height: 6),
                         Text(
+                          '${item['borrow_count'] ?? 0} borrows',
+                          style: const TextStyle(
+                            color: AppPalette.deep,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
                           '${item['available']} in stock',
                           style: const TextStyle(
-                            color: AppPalette.primary,
+                            color: Color(0xff476b62),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -2343,9 +2388,14 @@ class _HomeState extends State<Home> {
       ),
       const SizedBox(height: 14),
       _settingsTile(
-        leading: const CircleAvatar(
+        leading: CircleAvatar(
           backgroundColor: AppPalette.mist,
-          child: Icon(Icons.person_outline, color: AppPalette.primary),
+          backgroundImage: avatarBytes == null
+              ? null
+              : MemoryImage(avatarBytes!),
+          child: avatarBytes == null
+              ? const Icon(Icons.person_outline, color: AppPalette.primary)
+              : null,
         ),
         title: Text('${api.user['name']}'),
         subtitle: Text(
@@ -2365,6 +2415,13 @@ class _HomeState extends State<Home> {
         style: TextStyle(fontWeight: FontWeight.bold, color: AppPalette.deep),
       ),
       const SizedBox(height: 8),
+      _settingsTile(
+        leading: const Icon(Icons.add_a_photo_outlined),
+        title: const Text('Profile photo'),
+        subtitle: const Text('Choose a photo from your device'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _changeAvatar,
+      ),
       _settingsTile(
         leading: const Icon(Icons.apps_outlined),
         title: const Text('App icon'),
@@ -2592,18 +2649,55 @@ class _HomeState extends State<Home> {
   }
 
   Widget _loanCard(dynamic r) => Card(
-    child: ListTile(
-      leading: Icon(
-        r['loan_status'] == 'ACTIVE' ? Icons.schedule : Icons.check_circle,
-        color: r['loan_status'] == 'ACTIVE' ? AppPalette.primary : teal,
-      ),
-      title: Text('${r['equipment_name']} · ${r['equipment_id']}'),
-      subtitle: Text(
-        '${r['borrower_name']} (${r['borrower_id']})\n${r['barcode']} · Due ${_shortDate(r['due_at'])}',
-      ),
-      isThreeLine: true,
-      trailing: Text(r['loan_status']),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
       onTap: () => _receiptDialog(r),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Icon(
+              r['loan_status'] == 'ACTIVE'
+                  ? Icons.schedule
+                  : Icons.check_circle,
+              color: r['loan_status'] == 'ACTIVE' ? AppPalette.primary : teal,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${r['equipment_name']}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${r['barcode']} · Due ${_shortDate(r['due_at']).split(' ').first}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppPalette.muted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${r['loan_status']}',
+              style: const TextStyle(
+                color: AppPalette.primary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -2632,6 +2726,7 @@ class _ScanPageState extends State<ScanPage> {
     appBar: AppBar(title: Text(widget.title)),
     body: Column(
       children: [
+        const HeaderHaze(height: 30),
         Expanded(
           child: MobileScanner(
             controller: scanner,

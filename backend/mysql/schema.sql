@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   program VARCHAR(120) NULL,
   section VARCHAR(32) NULL,
   home_address VARCHAR(240) NULL,
+  avatar_data MEDIUMTEXT NULL,
   terms_accepted_at DATETIME(6) NULL,
   role ENUM('ADMIN','STUDENT','FACULTY','USER') NOT NULL
 ) ENGINE=InnoDB;

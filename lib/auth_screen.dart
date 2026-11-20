@@ -7,6 +7,7 @@ import 'app_palette.dart';
 import 'auth_policy_sheet.dart';
 import 'landing_art.dart';
 import 'student_programs.dart';
+import 'header_haze.dart';
 
 const _ink = AppPalette.ink;
 const _muted = AppPalette.muted;
@@ -856,21 +857,28 @@ class _AuthScreenState extends State<AuthScreen> {
     child: Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            _gradient(),
-            Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 430),
-                child: SizedBox(
-                  height: double.infinity,
-                  child: switch (page) {
-                    _Page.welcome => _welcome(),
-                    _Page.login => _login(),
-                    _Page.signup => _signup(),
-                  },
-                ),
+            const HeaderHaze(height: 30),
+            Expanded(
+              child: Stack(
+                children: [
+                  _gradient(),
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 430),
+                      child: SizedBox(
+                        height: double.infinity,
+                        child: switch (page) {
+                          _Page.welcome => _welcome(),
+                          _Page.login => _login(),
+                          _Page.signup => _signup(),
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

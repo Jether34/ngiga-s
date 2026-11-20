@@ -4,6 +4,8 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan equipment QR codes and barcodes for borrowing and returns.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a profile photo for your stockroom account.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

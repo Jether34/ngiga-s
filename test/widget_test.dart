@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ngiga/auth_screen.dart';
 import 'package:ngiga/auth_policy_sheet.dart';
+import 'package:ngiga/session_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('auth screens and searchable program selection fit the phone', (
@@ -21,6 +23,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Login'), findsOneWidget);
     expect(find.text('Enter Your Email'), findsOneWidget);
+    final rememberBox = find.byType(Checkbox);
+    expect(tester.widget<Checkbox>(rememberBox).value, false);
+    await tester.tap(rememberBox);
+    await tester.pump();
+    expect(tester.widget<Checkbox>(rememberBox).value, true);
     await tester.tap(find.text('Sign up'));
     await tester.pumpAndSettle();
     expect(find.text('Sign Up'), findsOneWidget);
@@ -45,6 +52,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bachelor of Science in Cybersecurity'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  test('Remember me stores only opted-in sessions', () async {
+    SharedPreferences.setMockInitialValues({});
+    final sessions = SessionStore();
+    await sessions.save('remembered-token', remember: true);
+    expect(await sessions.restore(), 'remembered-token');
+    await sessions.save('temporary-token', remember: false);
+    expect(await sessions.restore(), isEmpty);
+    await sessions.save('remembered-again', remember: true);
+    await sessions.clear();
+    expect(await sessions.restore(), isEmpty);
   });
 
   testWidgets('Terms and Privacy use the detailed bottom sheets', (

@@ -156,26 +156,26 @@ void registerAuthRoutes() {
             const auto password = field(*body, "password");
             try {
                 auto db = app().getDbClient();
-                drogon::orm::Result rows;
                 const auto loginType = field(*body, "login_type");
                 const auto phone = field(*body, "phone");
-                if (loginType == "phone" || (!phone.empty() && field(*body, "email").empty())) {
+                const auto email = field(*body, "email");
+                const bool phoneLogin = loginType == "phone" || (!phone.empty() && email.empty());
+                if (phoneLogin) {
                     const auto normalized = normalizedPhone(phone);
                     if (!std::regex_match(phone, std::regex(R"(\+?[0-9() -]{7,30})")) ||
                         !std::regex_match(normalized, std::regex(R"(\+?[0-9]{7,20})"))) {
                         callback(error(k422UnprocessableEntity, "Enter a valid phone number")); return;
                     }
-                    rows = db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
-                        normalized);
-                } else {
-                    if (field(*body, "email").empty()) {
-                        callback(error(k422UnprocessableEntity, "Enter your email or phone number")); return;
-                    }
-                    rows = db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE lower(email)=lower(?)",
-                        field(*body, "email"));
+                } else if (email.empty()) {
+                    callback(error(k422UnprocessableEntity, "Enter your email or phone number")); return;
                 }
+                const auto rows = phoneLogin
+                    ? db->execSqlSync(
+                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
+                        normalizedPhone(phone))
+                    : db->execSqlSync(
+                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE lower(email)=lower(?)",
+                        email);
                 if (rows.empty() || !bcrypt::validatePassword(
                         password, rows[0]["password_hash"].as<std::string>())) {
                     callback(error(k401Unauthorized, "Email, phone, or password is incorrect")); return;
@@ -223,7 +223,11 @@ void registerAuthRoutes() {
             auto name = field(*body, "name"), phone = field(*body, "phone");
             auto section = field(*body, "section"), address = field(*body, "home_address");
             auto email = field(*body, "email"), accountId = field(*body, "student_id");
-            auto year = field(*body, "year_level"), program = field(*body, "program");
+            auto year = field(*body, "year_level");
+            const auto program = user["program"].asString();
+            if (body->isMember("program") && field(*body, "program") != program) {
+                callback(error(k403Forbidden, "Program cannot be changed")); return;
+            }
             phone = normalizedPhone(phone);
             if (name.size() < 2 || name.size() > 100 || section.empty() || section.size() > 32 ||
                 address.size() < 5 || address.size() > 240 ||
@@ -236,12 +240,54 @@ void registerAuthRoutes() {
             }
             try {
                 app().getDbClient()->execSqlSync(
-                    "UPDATE users SET name=?,email=?,account_id=?,phone=?,year_level=?,program=?,section=?,home_address=? WHERE id=? AND role='STUDENT'",
-                    name, email, accountId, phone, year, program, section, address, user["id"].asString());
+                    "UPDATE users SET name=?,email=?,account_id=?,phone=?,year_level=?,section=?,home_address=? WHERE id=? AND role='STUDENT'",
+                    name, email, accountId, phone, year, section, address, user["id"].asString());
                 callback(json(currentUser(request)));
             } catch (const drogon::orm::DrogonDbException &) {
                 callback(error(k409Conflict, "Email, phone, or student ID is already in use"));
             } catch (...) { callback(error(k500InternalServerError, "Unable to update profile")); }
+        },
+        {Patch});
+
+    app().registerHandler(
+        "/me/avatar",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            try { user = currentUser(request); }
+            catch (const std::runtime_error &e) { callback(error(k401Unauthorized, e.what())); return; }
+            try {
+                const auto rows = app().getDbClient()->execSqlSync(
+                    "SELECT avatar_data FROM users WHERE id=?", user["id"].asString());
+                Json::Value result;
+                result["image"] = rows.empty() || rows[0]["avatar_data"].isNull()
+                    ? "" : rows[0]["avatar_data"].as<std::string>();
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to load profile photo")); }
+        },
+        {Get});
+
+    app().registerHandler(
+        "/me/avatar",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            try { user = currentUser(request); }
+            catch (const std::runtime_error &e) { callback(error(k401Unauthorized, e.what())); return; }
+            const auto body = request->getJsonObject();
+            if (!body || !(*body)["image"].isString()) {
+                callback(error(k400BadRequest, "Invalid image")); return;
+            }
+            const auto image = (*body)["image"].asString();
+            if (image.size() > 700000 ||
+                (!image.empty() && !std::regex_match(image, std::regex(R"([A-Za-z0-9+/]+={0,2})")))) {
+                callback(error(k422UnprocessableEntity, "Choose a smaller JPEG profile photo")); return;
+            }
+            try {
+                app().getDbClient()->execSqlSync(
+                    "UPDATE users SET avatar_data=? WHERE id=?", image, user["id"].asString());
+                Json::Value result;
+                result["saved"] = true;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to save profile photo")); }
         },
         {Patch});
 

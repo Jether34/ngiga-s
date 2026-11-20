@@ -29,11 +29,23 @@ android {
         versionName = flutter.versionName
     }
 
+    val releaseKeystore = System.getenv("NGIGA_KEYSTORE_PATH")
+    if (releaseKeystore != null) {
+        signingConfigs.create("ngigaRelease") {
+            storeFile = file(releaseKeystore)
+            storePassword = System.getenv("NGIGA_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("NGIGA_KEY_ALIAS")
+            keyPassword = System.getenv("NGIGA_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeystore != null) {
+                signingConfigs.getByName("ngigaRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

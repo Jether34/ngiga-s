@@ -82,6 +82,7 @@ void startOutboxPump() {
             {"program", "program VARCHAR(120) NULL"},
             {"section", "section VARCHAR(32) NULL"},
             {"home_address", "home_address VARCHAR(240) NULL"},
+            {"avatar_data", "avatar_data MEDIUMTEXT NULL"},
             {"terms_accepted_at", "terms_accepted_at DATETIME(6) NULL"},
         };
         for (const auto &[name, definition] : profileColumns) {
