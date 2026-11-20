@@ -8,6 +8,7 @@ import 'app_palette.dart';
 import 'student_profile_editor.dart';
 import 'notification_page.dart';
 import 'header_haze.dart';
+import 'leaderboard_page.dart';
 import 'session_store.dart';
 
 import 'package:flutter/services.dart';
@@ -1431,58 +1432,7 @@ class _HomeState extends State<Home> {
   void _openLeaderboard() {
     final future = api.get('/leaderboard');
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(title: const Text('Leaderboard')),
-          body: pageWithHaze(
-            FutureBuilder<dynamic>(
-              future: future,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData && !snapshot.hasError) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError)
-                  return Center(
-                    child: Text(
-                      'Could not load leaderboard: ${snapshot.error}',
-                    ),
-                  );
-                final people = List<dynamic>.from(snapshot.data as List);
-                if (people.isEmpty)
-                  return const Center(child: Text('No student loans yet.'));
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: people.length,
-                  itemBuilder: (context, index) => Card(
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: AppPalette.mist,
-                        child: Text(
-                          '${index + 1}',
-                          style: const TextStyle(color: navy),
-                        ),
-                      ),
-                      title: Text('${people[index]['name']}'),
-                      subtitle: Text(
-                        '${people[index]['program']}\n${people[index]['year_level']} • ${people[index]['section']}\n${people[index]['borrow_count']} items borrowed',
-                      ),
-                      isThreeLine: true,
-                      trailing: index < 3
-                          ? Icon(
-                              Icons.emoji_events,
-                              color: index == 0
-                                  ? const Color(0xffd39a2e)
-                                  : AppPalette.primary,
-                            )
-                          : null,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
+      MaterialPageRoute(builder: (context) => LeaderboardPage(future: future)),
     );
   }
 
