@@ -24,7 +24,7 @@ import {
   products as fixtureProducts,
 } from "../data/fixtures";
 import { demoService } from "../services/demoService";
-import { IconButton, Field, ProductArt } from "../components/ui";
+import { IconButton, Field, Modal, ProductArt } from "../components/ui";
 import { schoolEmail } from "../utils/domain";
 
 const publicLinks = [
@@ -276,6 +276,18 @@ export function Auth({ mode, navigate, setSession, notify }) {
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
+  const [legalDocument, setLegalDocument] = useState(null);
+  const signupReady =
+    form.fullName.trim().length >= 2 &&
+    /^[A-Za-z0-9-]{4,20}$/.test(form.studentId.trim()) &&
+    schoolEmail(form.schoolEmail) &&
+    Boolean(form.yearLevel) &&
+    Boolean(form.program.trim()) &&
+    form.address.trim().length >= 8 &&
+    /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/.test(form.password) &&
+    form.confirm === form.password &&
+    agreementAccepted;
   const update = (key, value) => {
     setForm((old) => ({ ...old, [key]: value }));
     setErrors((old) => ({ ...old, [key]: "" }));
@@ -305,6 +317,8 @@ export function Auth({ mode, navigate, setSession, notify }) {
         : "Enter your password.";
     if (signup && form.confirm !== form.password)
       next.confirm = "Passwords do not match.";
+    if (signup && !agreementAccepted)
+      next.agreement = "Please agree to the Terms of Use and Privacy Policy.";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -408,10 +422,8 @@ export function Auth({ mode, navigate, setSession, notify }) {
             </button>
           </div>
         ) : (
-          <div className="auth-form-wrap">
-            <div className="eyebrow">
-              {signup ? "JOIN YOUR CAMPUS" : "WELCOME BACK"}
-            </div>
+          <div className={`auth-form-wrap${signup ? " signup-form-wrap" : ""}`}>
+            {!signup && <div className="eyebrow">WELCOME BACK</div>}
             <h1>{signup ? "Create your account" : "Log in to your account"}</h1>
             <p className="auth-intro">
               {signup
@@ -554,7 +566,30 @@ export function Auth({ mode, navigate, setSession, notify }) {
                   {authError}
                 </div>
               )}
-              <button className="button wide auth-submit" disabled={busy}>
+              {signup && (
+                <div className="signup-agreement">
+                  <input
+                    id="signup-agreement"
+                    type="checkbox"
+                    checked={agreementAccepted}
+                    aria-label="I have read and agree to the Terms of Use and Privacy Policy."
+                    aria-invalid={Boolean(errors.agreement)}
+                    onChange={(event) => {
+                      setAgreementAccepted(event.target.checked);
+                      setErrors((old) => ({ ...old, agreement: "" }));
+                    }}
+                  />
+                  <div>
+                    <label htmlFor="signup-agreement">I have read and agree to the </label>
+                    <button type="button" className="signup-legal-link" onClick={() => setLegalDocument("terms")}>Terms of Use</button>
+                    <span> and </span>
+                    <button type="button" className="signup-legal-link" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button>
+                    <span>.</span>
+                    {errors.agreement && <small className="field-error" role="alert">{errors.agreement}</small>}
+                  </div>
+                </div>
+              )}
+              <button className="button wide auth-submit" disabled={busy || (signup && !signupReady)}>
                 {busy ? (
                   <>
                     <RefreshCw size={17} className="spin" /> Please wait…
@@ -601,6 +636,41 @@ export function Auth({ mode, navigate, setSession, notify }) {
               </div>
             )}
           </div>
+        )}
+        {signup && legalDocument && (
+          <Modal
+            title={legalDocument === "terms" ? "Terms of Use" : "Privacy Policy"}
+            size="wide"
+            onClose={() => setLegalDocument(null)}
+          >
+            <div className="signup-legal-document">
+              <div className="signup-legal-draft">
+                <Info size={18} />
+                <span>Draft placeholder content. Institutional and legal review is required before deployment.</span>
+              </div>
+              {legalDocument === "terms" ? (
+                <>
+                  <p>These draft terms describe how the campus equipment borrowing service is intended to work. They are provided for this frontend demonstration and are not a final institutional agreement.</p>
+                  <h3>Eligibility and account use</h3>
+                  <p>Students should use their own school account and provide accurate academic and contact details. Access and borrowing eligibility will be verified by the institution when backend services are connected.</p>
+                  <h3>Borrowing and returns</h3>
+                  <p>Borrowers should check equipment condition when collecting a unit, use it responsibly, and return it by the agreed due date. Administrators may record checkouts, returns, maintenance needs, and overdue items.</p>
+                  <h3>Availability and changes</h3>
+                  <p>Catalog availability and due dates shown in this demo are sample data. Final borrowing rules, fees, and dispute procedures must be supplied and approved by the institution before launch.</p>
+                </>
+              ) : (
+                <>
+                  <p>This draft notice explains the information this service may need for student registration and equipment loans. It is placeholder content for review before deployment.</p>
+                  <h3>Information used</h3>
+                  <p>The registration form asks for your name, student ID, school email, year level, academic program, address, and password. A production service may also record borrowing and return activity.</p>
+                  <h3>How information is used</h3>
+                  <p>The intended uses are account verification, equipment inventory tracking, loan administration, and return reminders. The institution must confirm its lawful basis, retention period, access controls, and contact details in the final policy.</p>
+                  <h3>Current demo behavior</h3>
+                  <p>This frontend demo performs local form checks and does not create a real account or submit registration details to a server. Do not enter a password you use elsewhere.</p>
+                </>
+              )}
+            </div>
+          </Modal>
         )}
       </div>
     </div>

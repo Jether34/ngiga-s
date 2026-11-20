@@ -1075,6 +1075,9 @@ select:disabled {
   font-size: 2.2rem;
   margin: 10px 0;
 }
+.signup-form-wrap h1 {
+  margin-top: 0;
+}
 .auth-intro {
   font-size: 0.88rem;
   margin-bottom: 25px;
@@ -1088,6 +1091,76 @@ select:disabled {
 }
 .auth-submit {
   margin-top: 6px;
+}
+.signup-agreement {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin: 5px 0 12px;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+.signup-agreement input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  min-height: 0;
+  flex: none;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--emerald-dark);
+  cursor: pointer;
+}
+.signup-agreement label {
+  cursor: pointer;
+}
+.signup-agreement .field-error {
+  display: block;
+  margin-top: 5px;
+  color: var(--danger);
+}
+.signup-legal-link {
+  display: inline;
+  padding: 0;
+  color: var(--emerald-dark);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.signup-legal-link:hover {
+  color: var(--forest);
+}
+.signup-legal-document {
+  font-size: 0.84rem;
+}
+.signup-legal-document h3 {
+  margin: 22px 0 6px;
+  color: var(--forest);
+  font-size: 1rem;
+}
+.signup-legal-document p {
+  margin-bottom: 10px;
+}
+.signup-legal-draft {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  border: 1px solid var(--surface-beige);
+  border-radius: 10px;
+  background: var(--surface-warm);
+  color: var(--forest);
+  font-weight: 700;
+  line-height: 1.5;
+}
+.signup-legal-draft svg {
+  flex: none;
+  margin-top: 1px;
 }
 .auth-switch {
   text-align: center;
