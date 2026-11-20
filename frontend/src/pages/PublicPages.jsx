@@ -360,8 +360,35 @@ export function Auth({ mode, navigate, setSession, notify }) {
       );
     }
   };
+  const passwordField = (
+    <Field
+      label="Password"
+      error={errors.password}
+      hint={
+        signup
+          ? "8+ characters, upper and lowercase letters, and a number"
+          : ""
+      }
+      required
+    >
+      <div className="password-input">
+        <input
+          type={visible ? "text" : "password"}
+          autoComplete={signup ? "new-password" : "current-password"}
+          value={form.password}
+          onChange={(e) => update("password", e.target.value)}
+          placeholder="Enter password"
+        />
+        <IconButton
+          icon={visible ? EyeOff : Eye}
+          label={visible ? "Hide password" : "Show password"}
+          onClick={() => setVisible(!visible)}
+        />
+      </div>
+    </Field>
+  );
   return (
-    <div className="auth-page">
+    <div className={`auth-page${signup ? " auth-page-signup" : ""}`}>
       <div className="auth-aside">
         <button className="brand" onClick={() => navigate("/")}>
           <span className="brand-mark">
@@ -422,8 +449,7 @@ export function Auth({ mode, navigate, setSession, notify }) {
             </button>
           </div>
         ) : (
-          <div className={`auth-form-wrap${signup ? " signup-form-wrap" : ""}`}>
-            {!signup && <div className="eyebrow">WELCOME BACK</div>}
+          <div className="auth-form-wrap">
             <h1>{signup ? "Create your account" : "Log in to your account"}</h1>
             <p className="auth-intro">
               {signup
@@ -510,42 +536,20 @@ export function Auth({ mode, navigate, setSession, notify }) {
                   </Field>
                 </>
               )}
-              <Field
-                label="Password"
-                error={errors.password}
-                hint={
-                  signup
-                    ? "8+ characters, upper and lowercase letters, and a number"
-                    : ""
-                }
-                required
-              >
-                <div className="password-input">
-                  <input
-                    type={visible ? "text" : "password"}
-                    autoComplete={signup ? "new-password" : "current-password"}
-                    value={form.password}
-                    onChange={(e) => update("password", e.target.value)}
-                    placeholder="Enter password"
-                  />
-                  <IconButton
-                    icon={visible ? EyeOff : Eye}
-                    label={visible ? "Hide password" : "Show password"}
-                    onClick={() => setVisible(!visible)}
-                  />
+              {signup ? (
+                <div className="form-grid signup-password-grid">
+                  {passwordField}
+                  <Field label="Confirm password" error={errors.confirm} required>
+                    <input
+                      type={visible ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={form.confirm}
+                      onChange={(e) => update("confirm", e.target.value)}
+                      placeholder="Repeat password"
+                    />
+                  </Field>
                 </div>
-              </Field>
-              {signup && (
-                <Field label="Confirm password" error={errors.confirm} required>
-                  <input
-                    type={visible ? "text" : "password"}
-                    autoComplete="new-password"
-                    value={form.confirm}
-                    onChange={(e) => update("confirm", e.target.value)}
-                    placeholder="Repeat password"
-                  />
-                </Field>
-              )}
+              ) : passwordField}
               {!signup && (
                 <button
                   type="button"
