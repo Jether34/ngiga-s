@@ -409,13 +409,19 @@ select:disabled {
 }
 .public-header {
   width: 100%;
-  max-width: 1240px;
+  max-width: none;
   margin: 0 auto;
-  padding: 25px 32px;
+  padding: 25px max(32px, calc((100vw - 1176px) / 2));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(247, 249, 246, 0.96);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(11, 61, 46, 0.08);
 }
 .public-header .brand {
   flex: none;
@@ -1302,6 +1308,10 @@ select:disabled {
   padding: 0 35px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
 }
 .topbar-left,
 .topbar-right,
@@ -2875,7 +2885,7 @@ select:disabled {
   }
 }
 .welcome-page {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 .receive-capture-toggle {
   margin-bottom: 16px;
