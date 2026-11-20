@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(32) NULL UNIQUE,
   year_level VARCHAR(24) NULL,
   program VARCHAR(120) NULL,
+  section VARCHAR(32) NULL,
   home_address VARCHAR(240) NULL,
   terms_accepted_at DATETIME(6) NULL,
   role ENUM('ADMIN','STUDENT','FACULTY','USER') NOT NULL
@@ -69,6 +70,14 @@ CREATE TABLE IF NOT EXISTS receipts (
   receipt_number VARCHAR(32) NOT NULL UNIQUE,
   created_at DATETIME(6) NOT NULL,
   CONSTRAINT fk_receipts_loan FOREIGN KEY (loan_id) REFERENCES loans(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notification_reads (
+  user_id VARCHAR(36) NOT NULL,
+  notification_id VARCHAR(64) NOT NULL,
+  read_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (user_id, notification_id),
+  CONSTRAINT fk_notification_reads_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
 -- Transactional outbox lets every API replica deliver committed inventory

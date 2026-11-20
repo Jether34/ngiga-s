@@ -19,6 +19,7 @@ Json::Value asInventory(const drogon::orm::Row &row) {
     item["available"] = row["available"].as<int>();
     item["issued"] = row["issued"].as<int>();
     item["maintenance"] = row["maintenance"].as<int>();
+    item["borrow_count"] = row["borrow_count"].as<int>();
     return item;
 }
 
@@ -26,7 +27,8 @@ const std::string inventorySql =
     "SELECT e.id,e.name,e.category,e.min_stock,COUNT(u.id) AS total,"
     "COALESCE(SUM(u.status='AVAILABLE'),0) AS available,"
     "COALESCE(SUM(u.status='ISSUED'),0) AS issued,"
-    "COALESCE(SUM(u.status='MAINTENANCE'),0) AS maintenance "
+    "COALESCE(SUM(u.status='MAINTENANCE'),0) AS maintenance,"
+    "(SELECT COUNT(*) FROM loans l JOIN units lu ON lu.id=l.unit_id WHERE lu.equipment_id=e.id) AS borrow_count "
     "FROM equipment e LEFT JOIN units u ON u.equipment_id=e.id ";
 
 bool requireUser(const HttpRequestPtr &request, Callback &callback, Json::Value &user) {

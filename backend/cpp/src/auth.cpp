@@ -20,6 +20,14 @@ std::string secret() {
 std::string field(const Json::Value &body, const char *name) {
     return body.isMember(name) && body[name].isString() ? body[name].asString() : "";
 }
+
+std::string normalizedPhone(const std::string &value) {
+    std::string result;
+    for (const unsigned char ch : value) {
+        if (std::isdigit(ch) || (ch == '+' && result.empty())) result += static_cast<char>(ch);
+    }
+    return result;
+}
 }
 
 drogon::HttpResponsePtr json(const Json::Value &body, drogon::HttpStatusCode status) {
@@ -47,7 +55,7 @@ Json::Value currentUser(const drogon::HttpRequestPtr &request) {
             .verify(token);
         auto db = drogon::app().getDbClient();
         const auto rows = db->execSqlSync(
-            "SELECT id,email,name,account_id,role FROM users WHERE id=?",
+            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at FROM users WHERE id=?",
             token.get_subject());
         if (rows.empty()) throw std::runtime_error("Session expired");
         Json::Value user;
@@ -56,6 +64,9 @@ Json::Value currentUser(const drogon::HttpRequestPtr &request) {
         user["name"] = rows[0]["name"].as<std::string>();
         user["account_id"] = rows[0]["account_id"].as<std::string>();
         user["role"] = rows[0]["role"].as<std::string>();
+        for (const auto *key : {"phone", "year_level", "program", "section", "home_address"})
+            user[key] = rows[0][key].isNull() ? "" : rows[0][key].as<std::string>();
+        user["terms_accepted_at"] = rows[0]["terms_accepted_at"].isNull() ? "" : rows[0]["terms_accepted_at"].as<std::string>();
         return user;
     } catch (const std::runtime_error &) {
         throw;
@@ -76,6 +87,8 @@ void registerAuthRoutes() {
             auto phone = field(*body, "phone");
             auto yearLevel = field(*body, "year_level");
             auto program = field(*body, "program");
+            auto section = field(*body, "section");
+            auto studentId = field(*body, "student_id");
             auto address = field(*body, "home_address");
             const auto password = field(*body, "password");
             const bool termsAccepted = body->isMember("agree_terms") &&
@@ -93,26 +106,35 @@ void registerAuthRoutes() {
             program.erase(program.find_last_not_of(" \t\r\n") + 1);
             address.erase(0, address.find_first_not_of(" \t\r\n"));
             address.erase(address.find_last_not_of(" \t\r\n") + 1);
+            section.erase(0, section.find_first_not_of(" \t\r\n"));
+            section.erase(section.find_last_not_of(" \t\r\n") + 1);
+            studentId.erase(0, studentId.find_first_not_of(" \t\r\n"));
+            studentId.erase(studentId.find_last_not_of(" \t\r\n") + 1);
             std::transform(email.begin(), email.end(), email.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const bool phoneCharactersValid = std::regex_match(
+                phone, std::regex(R"(\+?[0-9() -]{7,30})"));
+            phone = normalizedPhone(phone);
             const bool validYear = yearLevel == "1st Year" || yearLevel == "2nd Year" ||
-                                   yearLevel == "3rd Year" || yearLevel == "4th Year" ||
-                                   yearLevel == "5th Year" || yearLevel == "Graduate";
+                                   yearLevel == "3rd Year" || yearLevel == "4th Year";
             if (name.size() < 2 || name.size() > 100 || password.size() < 12 || password.size() > 72 ||
                 !std::regex_match(email, std::regex(R"([^@\s]+@[^@\s]+\.[^@\s]+)")) ||
-                !std::regex_match(phone, std::regex(R"(\+?[0-9][0-9() -]{6,20})")) ||
+                !phoneCharactersValid ||
+                !std::regex_match(phone, std::regex(R"(\+?[0-9]{7,20})")) ||
                 !validYear || program.size() < 2 || program.size() > 120 ||
-                address.size() < 5 || address.size() > 240 || !termsAccepted) {
+                address.size() < 5 || address.size() > 240 || section.size() > 32 ||
+                (!studentId.empty() && !std::regex_match(studentId, std::regex(R"([A-Za-z0-9-]{3,32})"))) ||
+                !termsAccepted) {
                 callback(error(k422UnprocessableEntity, "Complete all required fields, accept the terms, and use a password of at least 12 characters")); return;
             }
             try {
                 const auto uid = drogon::utils::getUuid();
-                const auto accountId = "STU-" + uid.substr(0, 8);
+                const auto accountId = studentId.empty() ? "STU-" + uid.substr(0, 8) : studentId;
                 const auto hash = bcrypt::generateHash(password, 12);
                 auto db = app().getDbClient();
                 db->execSqlSync(
-                    "INSERT INTO users(id,email,password_hash,name,account_id,phone,year_level,program,home_address,terms_accepted_at,role) VALUES(?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6),'STUDENT')",
-                    uid, email, hash, name, accountId, phone, yearLevel, program, address);
+                    "INSERT INTO users(id,email,password_hash,name,account_id,phone,year_level,program,section,home_address,terms_accepted_at,role) VALUES(?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6),'STUDENT')",
+                    uid, email, hash, name, accountId, phone, yearLevel, program, section, address);
                 Json::Value result;
                 result["message"] = "Student account created. Sign in to continue.";
                 result["account_id"] = accountId;
@@ -131,24 +153,32 @@ void registerAuthRoutes() {
         [](const HttpRequestPtr &request, Callback &&callback) {
             const auto body = request->getJsonObject();
             if (!body) { callback(error(k400BadRequest, "Invalid JSON body")); return; }
-            auto email = field(*body, "email");
             const auto password = field(*body, "password");
             try {
                 auto db = app().getDbClient();
                 drogon::orm::Result rows;
                 const auto loginType = field(*body, "login_type");
-                if (loginType == "phone") {
+                const auto phone = field(*body, "phone");
+                if (loginType == "phone" || (!phone.empty() && field(*body, "email").empty())) {
+                    const auto normalized = normalizedPhone(phone);
+                    if (!std::regex_match(phone, std::regex(R"(\+?[0-9() -]{7,30})")) ||
+                        !std::regex_match(normalized, std::regex(R"(\+?[0-9]{7,20})"))) {
+                        callback(error(k422UnprocessableEntity, "Enter a valid phone number")); return;
+                    }
                     rows = db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE phone=?",
-                        field(*body, "phone"));
+                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
+                        normalized);
                 } else {
+                    if (field(*body, "email").empty()) {
+                        callback(error(k422UnprocessableEntity, "Enter your email or phone number")); return;
+                    }
                     rows = db->execSqlSync(
                         "SELECT id,email,password_hash,name,account_id,role FROM users WHERE lower(email)=lower(?)",
                         field(*body, "email"));
                 }
                 if (rows.empty() || !bcrypt::validatePassword(
                         password, rows[0]["password_hash"].as<std::string>())) {
-                    callback(error(k401Unauthorized, "Email or password is incorrect")); return;
+                    callback(error(k401Unauthorized, "Email, phone, or password is incorrect")); return;
                 }
                 const auto uid = rows[0]["id"].as<std::string>();
                 const auto token = jwt::create()
@@ -179,6 +209,63 @@ void registerAuthRoutes() {
             try { callback(json(currentUser(request))); }
             catch (const std::runtime_error &e) { callback(error(k401Unauthorized, e.what())); }
             catch (...) { callback(error(k500InternalServerError, "Unable to read account")); }
+        },
+        {Get});
+
+    app().registerHandler(
+        "/me",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            try { user = currentUser(request); }
+            catch (const std::runtime_error &e) { callback(error(k401Unauthorized, e.what())); return; }
+            const auto body = request->getJsonObject();
+            if (!body) { callback(error(k400BadRequest, "Invalid JSON body")); return; }
+            auto name = field(*body, "name"), phone = field(*body, "phone");
+            auto section = field(*body, "section"), address = field(*body, "home_address");
+            auto email = field(*body, "email"), accountId = field(*body, "student_id");
+            auto year = field(*body, "year_level"), program = field(*body, "program");
+            phone = normalizedPhone(phone);
+            if (name.size() < 2 || name.size() > 100 || section.empty() || section.size() > 32 ||
+                address.size() < 5 || address.size() > 240 ||
+                !std::regex_match(phone, std::regex(R"(\+?[0-9]{7,20})")) ||
+                !std::regex_match(email, std::regex(R"([^@\s]+@[^@\s]+\.[^@\s]+)")) ||
+                !std::regex_match(accountId, std::regex(R"([A-Za-z0-9-]{3,32})")) ||
+                !(year == "1st Year" || year == "2nd Year" || year == "3rd Year" || year == "4th Year") ||
+                program.size() < 2 || program.size() > 120) {
+                callback(error(k422UnprocessableEntity, "Enter valid profile details")); return;
+            }
+            try {
+                app().getDbClient()->execSqlSync(
+                    "UPDATE users SET name=?,email=?,account_id=?,phone=?,year_level=?,program=?,section=?,home_address=? WHERE id=? AND role='STUDENT'",
+                    name, email, accountId, phone, year, program, section, address, user["id"].asString());
+                callback(json(currentUser(request)));
+            } catch (const drogon::orm::DrogonDbException &) {
+                callback(error(k409Conflict, "Email, phone, or student ID is already in use"));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to update profile")); }
+        },
+        {Patch});
+
+    app().registerHandler(
+        "/leaderboard",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            try { currentUser(request); }
+            catch (const std::runtime_error &e) { callback(error(k401Unauthorized, e.what())); return; }
+            try {
+                const auto rows = app().getDbClient()->execSqlSync(
+                    "SELECT u.name,u.program,u.year_level,u.section,COUNT(l.id) AS borrow_count FROM users u "
+                    "JOIN loans l ON l.user_id=u.id WHERE u.role='STUDENT' "
+                    "GROUP BY u.id,u.name,u.program,u.year_level,u.section ORDER BY borrow_count DESC,u.name ASC LIMIT 20");
+                Json::Value result(Json::arrayValue);
+                for (const auto &row : rows) {
+                    Json::Value item;
+                    item["name"] = row["name"].as<std::string>();
+                    for (const auto *key : {"program", "year_level", "section"})
+                        item[key] = row[key].isNull() ? "" : row[key].as<std::string>();
+                    item["borrow_count"] = row["borrow_count"].as<int>();
+                    result.append(item);
+                }
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to load leaderboard")); }
         },
         {Get});
 }

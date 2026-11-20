@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <future>
+#include <unordered_set>
 
 namespace stockroom {
 namespace {
@@ -217,5 +218,65 @@ void registerLoanRoutes() {
             } catch (...) { callback(error(k500InternalServerError, "Unable to load receipts")); }
         },
         {Get});
+
+    app().registerHandler(
+        "/notifications",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            if (!requireUser(request, callback, user)) return;
+            try {
+                const auto rows = app().getDbClient()->execSqlSync(
+                    "SELECT CONCAT('borrow-',l.id) AS id,'borrowed' AS type,"
+                    "CONCAT('Borrowed ',e.name) AS title,"
+                    "CONCAT('Item ',u.serial,' was checked out.') AS message,"
+                    "l.borrowed_at AS created_at FROM loans l "
+                    "JOIN units u ON u.id=l.unit_id JOIN equipment e ON e.id=u.equipment_id "
+                    "WHERE l.user_id=? UNION ALL "
+                    "SELECT CONCAT('return-',l.id),'returned',"
+                    "CONCAT('Returned ',e.name),CONCAT('Item ',u.serial,' was returned.'),"
+                    "l.returned_at FROM loans l JOIN units u ON u.id=l.unit_id "
+                    "JOIN equipment e ON e.id=u.equipment_id "
+                    "WHERE l.user_id=? AND l.returned_at IS NOT NULL UNION ALL "
+                    "SELECT CONCAT('overdue-',l.id),'overdue',"
+                    "CONCAT('Overdue: ',e.name),CONCAT('Return item ',u.serial,' as soon as possible.'),"
+                    "l.due_at FROM loans l JOIN units u ON u.id=l.unit_id "
+                    "JOIN equipment e ON e.id=u.equipment_id "
+                    "WHERE l.user_id=? AND l.status IN ('ACTIVE','OVERDUE') "
+                    "AND l.due_at<UTC_TIMESTAMP(6) ORDER BY created_at DESC LIMIT 100",
+                    user["id"].asString(), user["id"].asString(), user["id"].asString());
+                Json::Value result(Json::arrayValue);
+                const auto readRows = app().getDbClient()->execSqlSync(
+                    "SELECT notification_id FROM notification_reads WHERE user_id=?", user["id"].asString());
+                std::unordered_set<std::string> readIds;
+                for (const auto &readRow : readRows) readIds.insert(readRow["notification_id"].as<std::string>());
+                for (const auto &row : rows) {
+                    Json::Value item;
+                    for (const auto *key : {"id", "type", "title", "message", "created_at"})
+                        item[key] = row[key].as<std::string>();
+                    item["is_read"] = readIds.find(item["id"].asString()) != readIds.end();
+                    result.append(item);
+                }
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to load notifications")); }
+        },
+        {Get});
+
+    app().registerHandler(
+        "/notifications/{1}/read",
+        [](const HttpRequestPtr &request, Callback &&callback, const std::string &notificationId) {
+            Json::Value user;
+            if (!requireUser(request, callback, user)) return;
+            if (notificationId.size() > 64 || notificationId.empty()) {
+                callback(error(k422UnprocessableEntity, "Invalid notification")); return;
+            }
+            try {
+                app().getDbClient()->execSqlSync(
+                    "INSERT IGNORE INTO notification_reads(user_id,notification_id,read_at) VALUES(?,?,UTC_TIMESTAMP(6))",
+                    user["id"].asString(), notificationId);
+                Json::Value result;
+                result["is_read"] = true;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to mark notification read")); }
+        }, {Post});
 }
 }

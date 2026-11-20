@@ -27,6 +27,7 @@ def init():
  CREATE UNIQUE INDEX IF NOT EXISTS one_active_loan_per_unit ON loans(unit_id) WHERE status IN ('ACTIVE','OVERDUE');
  CREATE TABLE IF NOT EXISTS transactions(id TEXT PRIMARY KEY,equipment_id TEXT NOT NULL REFERENCES equipment(id),unit_id TEXT REFERENCES units(id),loan_id TEXT REFERENCES loans(id),type TEXT NOT NULL CHECK(type IN ('RECEIVE','ISSUE')),quantity INTEGER NOT NULL CHECK(quantity>0),created_at TEXT NOT NULL,actor_id TEXT NOT NULL REFERENCES users(id),idempotency_key TEXT UNIQUE);
  CREATE TABLE IF NOT EXISTS receipts(loan_id TEXT PRIMARY KEY REFERENCES loans(id),receipt_number TEXT UNIQUE NOT NULL,created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS user_profiles(user_id TEXT PRIMARY KEY REFERENCES users(id),phone TEXT UNIQUE,year_level TEXT,program TEXT,home_address TEXT);
  ''')
  if not c.execute('select 1 from users').fetchone():
   c.execute('insert into users values(?,?,?,?,?,?)',('admin-1',os.getenv('ADMIN_EMAIL','admin@example.edu'),pwd.hash(os.getenv('ADMIN_PASSWORD')),os.getenv('ADMIN_NAME','Laboratory Administrator'),os.getenv('ADMIN_ID','ADMIN-001'),'ADMIN'))
@@ -37,9 +38,10 @@ def init():
   c.execute('insert into units values(?,?,?,?)',('unit-s-1','EQ-003','SOLDER-3001','AVAILABLE'))
  c.commit(); c.close()
 init()
-class Login(BaseModel): email:str; password:str
+class Login(BaseModel): email:Optional[str]=None; phone:Optional[str]=None; password:str
 class Signup(BaseModel):
  name:str=Field(min_length=2,max_length=100); email:str=Field(min_length=6,max_length=254); account_id:str=Field(min_length=3,max_length=64); password:str=Field(min_length=12,max_length=72)
+ phone:Optional[str]=None; year_level:Optional[str]=None; program:Optional[str]=None; home_address:Optional[str]=None
  @field_validator('name')
  @classmethod
  def clean_name(cls,v):
@@ -85,12 +87,20 @@ events=Events()
 def signup(x:Signup):
  c=db(); uid=str(uuid.uuid4())
  try:
-  with c: c.execute('insert into users(id,email,password_hash,name,account_id,role) values(?,?,?,?,?,?)',(uid,x.email,pwd.hash(x.password),x.name,x.account_id,'STUDENT'))
- except sqlite3.IntegrityError: c.close(); raise HTTPException(409,'That email or student ID is already registered')
+  with c:
+   c.execute('insert into users(id,email,password_hash,name,account_id,role) values(?,?,?,?,?,?)',(uid,x.email,pwd.hash(x.password),x.name,x.account_id,'STUDENT'))
+   c.execute('insert into user_profiles(user_id,phone,year_level,program,home_address) values(?,?,?,?,?)',(uid,x.phone.strip() if x.phone else None,x.year_level,x.program,x.home_address))
+ except sqlite3.IntegrityError: c.close(); raise HTTPException(409,'That email, phone, or student ID is already registered')
  c.close(); return {'message':'Student account created. Sign in to continue.','account_id':x.account_id,'role':'STUDENT'}
 @app.post('/auth/login')
 def login(x:Login):
- c=db(); u=c.execute('select * from users where lower(email)=lower(?)',(x.email,)).fetchone(); c.close()
+ if not x.email and not x.phone: raise HTTPException(422,'Enter your email or phone number')
+ c=db()
+ if x.phone:
+  u=c.execute('select users.* from users join user_profiles on users.id=user_profiles.user_id where user_profiles.phone=?',(x.phone.strip(),)).fetchone()
+ else:
+  u=c.execute('select * from users where lower(email)=lower(?)',(x.email,)).fetchone()
+ c.close()
  if not u or not pwd.verify(x.password,u['password_hash']): raise HTTPException(401,'Email or password is incorrect')
  token=jwt.encode({'sub':u['id'],'exp':datetime.now(timezone.utc)+timedelta(hours=12)},SECRET,algorithm=ALG)
  return {'token':token,'user':{'id':u['id'],'email':u['email'],'name':u['name'],'account_id':u['account_id'],'role':u['role']}}

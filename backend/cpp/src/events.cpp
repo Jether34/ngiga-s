@@ -80,6 +80,7 @@ void startOutboxPump() {
             {"phone", "phone VARCHAR(32) NULL UNIQUE"},
             {"year_level", "year_level VARCHAR(24) NULL"},
             {"program", "program VARCHAR(120) NULL"},
+            {"section", "section VARCHAR(32) NULL"},
             {"home_address", "home_address VARCHAR(240) NULL"},
             {"terms_accepted_at", "terms_accepted_at DATETIME(6) NULL"},
         };
@@ -98,6 +99,10 @@ void startOutboxPump() {
                 }
             }
         }
+        db->execSqlSync("CREATE TABLE IF NOT EXISTS notification_reads ("
+            "user_id VARCHAR(36) NOT NULL,notification_id VARCHAR(64) NOT NULL,"
+            "read_at DATETIME(6) NOT NULL,PRIMARY KEY(user_id,notification_id),"
+            "CONSTRAINT fk_notification_reads_user FOREIGN KEY(user_id) REFERENCES users(id)) ENGINE=InnoDB");
         const auto admins = db->execSqlSync("SELECT id FROM users WHERE role='ADMIN' LIMIT 1");
         if (admins.empty()) {
             const auto *password = std::getenv("ADMIN_PASSWORD");

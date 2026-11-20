@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'auth_screen.dart';
+import 'app_palette.dart';
+import 'student_profile_editor.dart';
+import 'notification_page.dart';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -15,12 +21,9 @@ const apiDefault = String.fromEnvironment(
   'API_URL',
   defaultValue: 'http://10.0.2.2:8000',
 );
-const navy = Color(0xff064b37),
-    teal = Color(0xff14804a),
-    canvas = Color(0xffffffff),
-    neonCyan = Color(0xffffa91f),
-    neonLime = Color(0xffffcf55),
-    ink = Color(0xff1c1b19);
+const navy = AppPalette.deep,
+    teal = AppPalette.primary,
+    canvas = Color(0xffffffff);
 void main() {
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -41,9 +44,21 @@ class LabApp extends StatelessWidget {
     title: 'Stockroom',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: teal, primary: teal),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: teal,
+        primary: teal,
+        surface: Colors.white,
+      ),
       scaffoldBackgroundColor: canvas,
       useMaterial3: true,
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: AppPalette.line),
+        ),
+      ),
     ),
     home: const Root(),
   );
@@ -151,1138 +166,8 @@ class _RootState extends State<Root> {
   Widget build(BuildContext context) => !ready
       ? const Scaffold(body: Center(child: CircularProgressIndicator()))
       : api.token.isEmpty
-      ? Login(onLogin: _signed)
+      ? AuthScreen(onLogin: _signed)
       : Home(onLogout: _logout);
-}
-
-class Login extends StatefulWidget {
-  const Login({super.key, required this.onLogin});
-  final ValueChanged<bool> onLogin;
-  @override
-  State<Login> createState() => _LoginState();
-}
-
-class _LoginState extends State<Login> {
-  final email = TextEditingController(),
-      phone = TextEditingController(),
-      pass = TextEditingController();
-  final fullName = TextEditingController(),
-      program = TextEditingController(),
-      address = TextEditingController(),
-      confirm = TextEditingController();
-  bool busy = false,
-      signupMode = false,
-      welcome = true,
-      termsAccepted = false,
-      phoneLogin = false,
-      rememberMe = false,
-      showPassword = false,
-      showConfirmPassword = false;
-  String? yearLevel, selectedProgram, error;
-
-  @override
-  void dispose() {
-    email.dispose();
-    phone.dispose();
-    pass.dispose();
-    fullName.dispose();
-    program.dispose();
-    address.dispose();
-    confirm.dispose();
-    super.dispose();
-  }
-
-  Future<void> go() async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      if (signupMode) {
-        if (pass.text != confirm.text)
-          throw Exception('Passwords do not match');
-        if (yearLevel == null) throw Exception('Select your year level');
-        if (selectedProgram == null) throw Exception('Select your program');
-        if (selectedProgram == 'Other' && program.text.trim().length < 2)
-          throw Exception('Enter your program');
-        if (!termsAccepted)
-          throw Exception(
-            'Accept the Terms and Conditions and Privacy Policy to continue',
-          );
-        final result = await api.post('/auth/signup', {
-          'name': fullName.text.trim(),
-          'email': email.text.trim(),
-          'phone': phone.text.trim(),
-          'year_level': yearLevel,
-          'program': selectedProgram == 'Other'
-              ? program.text.trim()
-              : selectedProgram,
-          'home_address': address.text.trim(),
-          'password': pass.text,
-          'agree_terms': termsAccepted,
-        });
-        if (!mounted) return;
-        setState(() {
-          signupMode = false;
-          pass.clear();
-          confirm.clear();
-        });
-        final assignedId = result['account_id'] == null
-            ? ''
-            : ' Your user ID is ${result['account_id']}.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${result['message'] ?? 'Account created.'}$assignedId',
-            ),
-          ),
-        );
-      } else {
-        final d = await api.post(
-          '/auth/login',
-          phoneLogin
-              ? {
-                  'login_type': 'phone',
-                  'phone': phone.text.trim(),
-                  'password': pass.text,
-                }
-              : {
-                  'login_type': 'email',
-                  'email': email.text.trim(),
-                  'password': pass.text,
-                },
-        );
-        api.token = d['token'];
-        api.user = Map<String, dynamic>.from(d['user']);
-        widget.onLogin(rememberMe);
-      }
-    } catch (e) {
-      if (mounted)
-        setState(() => error = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  void toggleMode() {
-    setState(() {
-      welcome = false;
-      signupMode = !signupMode;
-      error = null;
-      pass.clear();
-      confirm.clear();
-      if (signupMode) email.clear();
-    });
-  }
-
-  void notice(String message) =>
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
-
-  Future<void> showPolicy(bool privacy) => showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
-    builder: (sheetContext) {
-      final sections = privacy
-          ? <Map<String, String>>[
-              {
-                'title': 'Information collected',
-                'body': 'Stockroom stores the details you provide when creating an account: your name, email, phone number, year level, program, and home address. It also stores your generated student/user ID, login and account state, scanned item identifiers, loan and return dates, and receipt history.',
-              },
-              {
-                'title': 'Camera and barcode scans',
-                'body': 'The camera is used to read an equipment barcode or QR code. The decoded item code is sent to Stockroom to look up equipment and record a confirmed loan or return. Camera images and video are not uploaded as part of the scan request.',
-              },
-              {
-                'title': 'How information is used',
-                'body': 'Information is used to authenticate your account, manage equipment loans and returns, show receipts and loan history, and help authorized campus staff administer inventory and resolve account or equipment issues.',
-              },
-              {
-                'title': 'Who can access it',
-                'body': 'Authorized inventory administrators can see borrower identity and the account and transaction details needed to manage equipment. Information may also be processed by service providers that operate or maintain the app and its database.',
-              },
-              {
-                'title': 'Storage and retention',
-                'body': 'Account and transaction records are stored in the Stockroom database. Records are kept while needed to operate the account and meet the institution’s inventory and record-keeping requirements. Ask your campus administrator about the institution’s retention period.',
-              },
-              {
-                'title': 'Your choices',
-                'body': 'You may ask the campus administrator to review or correct your account details, or to explain the institution’s deletion and retention process. Some loan and inventory records may need to remain available for institutional records.',
-              },
-              {
-                'title': 'Security and contact',
-                'body': 'Stockroom uses password hashing and authenticated access controls. No online system can guarantee absolute security. For privacy questions, contact your laboratory or campus administrator through your institution’s usual support channel.',
-              },
-            ]
-          : <Map<String, String>>[
-              {
-                'title': 'Your account',
-                'body': 'Provide accurate account information and keep your password private. Public sign-up creates a student account. Stockroom assigns your student/user ID after registration.',
-              },
-              {
-                'title': 'Borrowing equipment',
-                'body': 'Choose a due date and time, scan the intended item, review the item and account details, then confirm the loan. A loan is created only after the server accepts the request. Borrowing and returning require an internet connection.',
-              },
-              {
-                'title': 'Care and return',
-                'body': 'Use borrowed equipment for its intended campus purpose, take reasonable care of it, and return the same physical item by the due date using the authorized return workflow. Report loss, damage, or a scan problem to the inventory administrator promptly.',
-              },
-              {
-                'title': 'Accountability',
-                'body': 'Stockroom records the borrower, physical item, barcode, due time, and return status so the borrower and authorized administrators can view the receipt and transaction history. Do not lend an issued item to another person or alter its barcode.',
-              },
-              {
-                'title': 'Acceptable use',
-                'body': 'Do not use Stockroom to access another person’s account, falsify inventory records, or bypass equipment controls. The institution may restrict borrowing access when required to protect equipment or resolve an overdue or disputed loan.',
-              },
-              {
-                'title': 'Availability and changes',
-                'body': 'Borrowing and returns need an active connection and depend on the campus service being available. The institution may update these terms and will publish the current version in the app.',
-              },
-              {
-                'title': 'Questions',
-                'body': 'For help with an account, loan, return, or these terms, contact your laboratory or campus inventory administrator through your institution’s usual support channel.',
-              },
-            ];
-      return SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .82,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 38,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xffdedede),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  privacy ? 'Privacy Policy' : 'Terms and Conditions',
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w700,
-                    color: ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Stockroom campus inventory',
-                  style: TextStyle(color: Color(0xff77736d), fontSize: 12),
-                ),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      for (final section in sections) ...[
-                        Text(
-                          section['title']!,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: ink,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          section['body']!,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            height: 1.45,
-                            color: Color(0xff4f4d49),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                    child: const Text('Close'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
-
-  InputDecoration field(String label, IconData icon, {Widget? suffix}) =>
-      InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, size: 17, color: const Color(0xff65615b)),
-        suffixIcon: suffix,
-        labelStyle: const TextStyle(color: Color(0xff77736d), fontSize: 11),
-        filled: true,
-        fillColor: Colors.white,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 12,
-          horizontal: 10,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xffe3ded5)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xffe3ded5)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: neonCyan, width: 1.4),
-        ),
-      );
-
-  Widget brand() => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: const Color(0xffe8dfcf)),
-        ),
-        child: const Icon(Icons.inventory_2_rounded, color: navy, size: 20),
-      ),
-      const SizedBox(width: 9),
-      const Text(
-        'Stockroom',
-        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: ink),
-      ),
-    ],
-  );
-
-  Widget hero() => Container(
-    height: 254,
-    decoration: BoxDecoration(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: Stack(
-      alignment: Alignment.center,
-      children: [
-        Positioned(
-          left: 18,
-          top: 26,
-          child: Icon(
-            Icons.auto_awesome,
-            color: neonCyan.withValues(alpha: .8),
-            size: 22,
-          ),
-        ),
-        Positioned(
-          right: 20,
-          bottom: 24,
-          child: Icon(
-            Icons.qr_code_2_rounded,
-            color: navy.withValues(alpha: .18),
-            size: 36,
-          ),
-        ),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              height: 145,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned(
-                    left: 35,
-                    top: 34,
-                    child: Icon(
-                      Icons.qr_code_scanner_rounded,
-                      size: 40,
-                      color: navy.withValues(alpha: .56),
-                    ),
-                  ),
-                  Positioned(
-                    right: 35,
-                    top: 32,
-                    child: Icon(
-                      Icons.inventory_2_rounded,
-                      size: 38,
-                      color: neonCyan,
-                    ),
-                  ),
-                  Container(
-                    width: 100,
-                    height: 124,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xffcad7e3),
-                        width: 2,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x18000000),
-                          blurRadius: 8,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.account_balance_rounded,
-                          color: Color(0xff7699c6),
-                          size: 34,
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: 46,
-                          height: 4,
-                          color: const Color(0xffd7e1ec),
-                        ),
-                        const SizedBox(height: 5),
-                        Container(
-                          width: 34,
-                          height: 4,
-                          color: const Color(0xffd7e1ec),
-                        ),
-                        const SizedBox(height: 8),
-                        const Icon(
-                          Icons.qr_code_2_rounded,
-                          color: neonCyan,
-                          size: 27,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Positioned(
-                    left: 63,
-                    bottom: 2,
-                    child: Icon(
-                      Icons.person_rounded,
-                      size: 34,
-                      color: Color(0xff355984),
-                    ),
-                  ),
-                  const Positioned(
-                    right: 60,
-                    bottom: 2,
-                    child: Icon(
-                      Icons.handyman_rounded,
-                      size: 32,
-                      color: Color(0xffd88342),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Text(
-              'SCAN  |  TRACK  |  RETURN',
-              style: TextStyle(
-                color: Color(0xff9a6200),
-                fontSize: 9,
-                letterSpacing: 1.7,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-
-  Widget action(String label, VoidCallback? onTap, {bool outline = false}) =>
-      SizedBox(
-        height: 44,
-        width: double.infinity,
-        child: outline
-            ? OutlinedButton(
-                onPressed: onTap,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xff9a6200),
-                  side: const BorderSide(color: neonCyan),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              )
-            : DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [neonLime, neonCyan]),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: ElevatedButton(
-                  onPressed: onTap,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    foregroundColor: ink,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                  ),
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-      );
-
-  Widget authTab(String title, bool selected, VoidCallback onTap) => Expanded(
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(7),
-      child: Container(
-        height: 34,
-        decoration: BoxDecoration(
-          color: selected ? neonCyan : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
-          border: Border.all(
-            color: selected ? const Color(0xffd88a0c) : const Color(0xffe9e2d8),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          title,
-          style: TextStyle(
-            color: ink,
-            fontSize: 11,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-          ),
-        ),
-      ),
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
-    body: SafeArea(
-      child: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SizedBox(
-              height: 205,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xffffd79b),
-                      Color(0xffffefd2),
-                      Colors.white,
-                    ],
-                    stops: [0, .55, 1],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(25, 22, 25, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (welcome) ...[
-                      const SizedBox(height: 2),
-                      brand(),
-                      const SizedBox(height: 12),
-                      hero(),
-                      const SizedBox(height: 5),
-                      const Text(
-                        'Track your campus equipment',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: ink,
-                          fontSize: 21,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      const Text(
-                        'Scan, borrow, and return equipment with every loan in one place.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xff5d5b56),
-                          fontSize: 11,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 5,
-                            height: 3,
-                            color: const Color(0xffaaa39a),
-                          ),
-                          const SizedBox(width: 4),
-                          Container(width: 16, height: 3, color: neonCyan),
-                        ],
-                      ),
-                      SizedBox(
-                        height: MediaQuery.sizeOf(context).height > 760
-                            ? MediaQuery.sizeOf(context).height * .30
-                            : 28,
-                      ),
-                      action(
-                        'Log in',
-                        () => setState(() {
-                          welcome = false;
-                          signupMode = false;
-                          error = null;
-                        }),
-                      ),
-                      const SizedBox(height: 7),
-                      action(
-                        'Sign up',
-                        () => setState(() {
-                          welcome = false;
-                          signupMode = true;
-                          error = null;
-                        }),
-                        outline: true,
-                      ),
-                      const SizedBox(height: 16),
-                    ] else ...[
-                      const SizedBox(height: 30),
-                      Text(
-                        signupMode ? 'Sign Up' : 'Log In',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: ink,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        signupMode
-                            ? 'Enter your name, FEU Tech email, phone number, year level, program, and address. Your student/user ID is assigned after registration.'
-                            : 'Sign in with your registered FEU Tech email or phone. Choose a return date and time before scanning equipment to borrow it.',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xff77736d),
-                          fontSize: 10,
-                        ),
-                      ),
-                      const SizedBox(height: 17),
-                      if (signupMode) ...[
-                        TextField(
-                          controller: fullName,
-                          textCapitalization: TextCapitalization.words,
-                          style: const TextStyle(color: ink, fontSize: 12),
-                          decoration: field('Full Name', Icons.person_outline),
-                        ),
-                        SizedBox(height: signupMode ? 12 : 7),
-                        TextField(
-                          controller: email,
-                          keyboardType: TextInputType.emailAddress,
-                          style: const TextStyle(color: ink, fontSize: 12),
-                          decoration: field(
-                            'Email Address',
-                            Icons.mail_outline,
-                          ),
-                        ),
-                        SizedBox(height: signupMode ? 12 : 7),
-                        TextField(
-                          controller: phone,
-                          keyboardType: TextInputType.phone,
-                          style: const TextStyle(color: ink, fontSize: 12),
-                          decoration: field(
-                            'Phone Number',
-                            Icons.phone_outlined,
-                          ),
-                        ),
-                        SizedBox(height: signupMode ? 12 : 7),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                initialValue: yearLevel,
-                                isExpanded: true,
-                                decoration: field(
-                                  'Year Level',
-                                  Icons.school_outlined,
-                                ),
-                                items:
-                                    const [
-                                          '1st Year',
-                                          '2nd Year',
-                                          '3rd Year',
-                                          '4th Year',
-                                          'Graduate',
-                                        ]
-                                        .map(
-                                          (y) => DropdownMenuItem(
-                                            value: y,
-                                            child: Text(
-                                              y,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                onChanged: (v) => setState(() => yearLevel = v),
-                              ),
-                            ),
-                            const SizedBox(width: 7),
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                initialValue: selectedProgram,
-                                isExpanded: true,
-                                decoration: field(
-                                  'Program',
-                                  Icons.menu_book_outlined,
-                                ),
-                                items:
-                                    const [
-                                          'BS Computer Science',
-                                          'BS Information Technology',
-                                          'BS Information Systems',
-                                          'BS Engineering',
-                                          'Other',
-                                        ]
-                                        .map(
-                                          (p) => DropdownMenuItem(
-                                            value: p,
-                                            child: Text(
-                                              p,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                onChanged: (v) => setState(() {
-                                  selectedProgram = v;
-                                  if (v != 'Other') program.text = v ?? '';
-                                }),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (selectedProgram == 'Other') ...[
-                          const SizedBox(height: 7),
-                          TextField(
-                            controller: program,
-                            style: const TextStyle(color: ink, fontSize: 12),
-                            decoration: field(
-                              'Enter your program',
-                              Icons.menu_book_outlined,
-                            ),
-                          ),
-                        ],
-                        SizedBox(height: signupMode ? 12 : 7),
-                        TextField(
-                          controller: address,
-                          textCapitalization: TextCapitalization.sentences,
-                          style: const TextStyle(color: ink, fontSize: 12),
-                          decoration: field(
-                            'Home Address',
-                            Icons.home_outlined,
-                          ),
-                        ),
-                        SizedBox(height: signupMode ? 12 : 7),
-                      ] else ...[
-                        Row(
-                          children: [
-                            authTab(
-                              'Email',
-                              !phoneLogin,
-                              () => setState(() {
-                                phoneLogin = false;
-                                error = null;
-                              }),
-                            ),
-                            const SizedBox(width: 7),
-                            authTab(
-                              'Phone',
-                              phoneLogin,
-                              () => setState(() {
-                                phoneLogin = true;
-                                error = null;
-                              }),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: phoneLogin ? phone : email,
-                          keyboardType: phoneLogin
-                              ? TextInputType.phone
-                              : TextInputType.emailAddress,
-                          style: const TextStyle(color: ink, fontSize: 12),
-                          decoration: field(
-                            phoneLogin
-                                ? 'Enter Your Phone'
-                                : 'Enter Your Email',
-                            phoneLogin
-                                ? Icons.phone_outlined
-                                : Icons.mail_outline,
-                          ),
-                        ),
-                        SizedBox(height: signupMode ? 12 : 7),
-                      ],
-                      TextField(
-                        controller: pass,
-                        obscureText: !showPassword,
-                        style: const TextStyle(color: ink, fontSize: 12),
-                        decoration: field(
-                          signupMode ? 'New Password' : 'Enter Your Password',
-                          Icons.lock_outline,
-                          suffix: IconButton(
-                            icon: Icon(
-                              showPassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: 17,
-                            ),
-                            onPressed: () =>
-                                setState(() => showPassword = !showPassword),
-                          ),
-                        ),
-                      ),
-                      if (signupMode) ...[
-                        SizedBox(height: signupMode ? 12 : 7),
-                        TextField(
-                          controller: confirm,
-                          obscureText: !showConfirmPassword,
-                          style: const TextStyle(color: ink, fontSize: 12),
-                          decoration: field(
-                            'Confirm Password',
-                            Icons.lock_outline,
-                            suffix: IconButton(
-                              tooltip: showConfirmPassword
-                                  ? 'Hide password'
-                                  : 'Show password',
-                              icon: Icon(
-                                showConfirmPassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                size: 17,
-                              ),
-                              onPressed: () => setState(
-                                () =>
-                                    showConfirmPassword = !showConfirmPassword,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 22,
-                              height: 23,
-                              child: Transform.scale(
-                                scale: .72,
-                                child: Checkbox(
-                                  value: termsAccepted,
-                                  onChanged: (v) => setState(
-                                    () => termsAccepted = v ?? false,
-                                  ),
-                                  activeColor: const Color(0xffe99a12),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(top: 3),
-                                child: Wrap(
-                                  children: [
-                                    const Text(
-                                      'I agree with the ',
-                                      style: TextStyle(
-                                        color: Color(0xff6b665f),
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: () => showPolicy(false),
-                                      child: const Text(
-                                        'Terms and Conditions',
-                                        style: TextStyle(
-                                          color: Color(0xffa66a00),
-                                          fontSize: 9,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                    ),
-                                    const Text(
-                                      ' and ',
-                                      style: TextStyle(
-                                        color: Color(0xff6b665f),
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                    GestureDetector(
-                                      onTap: () => showPolicy(true),
-                                      child: const Text(
-                                        'Privacy Policy',
-                                        style: TextStyle(
-                                          color: Color(0xffa66a00),
-                                          fontSize: 9,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                    ),
-                                    const Text(
-                                      '.',
-                                      style: TextStyle(
-                                        color: Color(0xff6b665f),
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 22,
-                              height: 23,
-                              child: Transform.scale(
-                                scale: .72,
-                                child: Checkbox(
-                                  value: rememberMe,
-                                  onChanged: (v) =>
-                                      setState(() => rememberMe = v ?? false),
-                                  activeColor: const Color(0xffe99a12),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 3),
-                            const Text(
-                              'Remember me',
-                              style: TextStyle(
-                                color: Color(0xff55514c),
-                                fontSize: 9,
-                              ),
-                            ),
-                            const Spacer(),
-                            TextButton(
-                              onPressed: () => notice(
-                                'Password recovery is not configured. Contact your administrator.',
-                              ),
-                              style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xffb87600),
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text(
-                                'Forgot Password?',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 7),
-                          child: Text(
-                            error!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Color(0xffbd293d),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      SizedBox(
-                        height: signupMode
-                            ? MediaQuery.sizeOf(context).height * .17
-                            : 10,
-                      ),
-                      action(
-                        busy
-                            ? (signupMode
-                                  ? 'Creating Account...'
-                                  : 'Logging In...')
-                            : (signupMode ? 'Create Account' : 'Log In'),
-                        busy ? null : go,
-                      ),
-                      if (!signupMode) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Divider(color: Color(0xffddd6cc)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                              ),
-                              child: Text(
-                                'Or Continue With',
-                                style: TextStyle(
-                                  color: Colors.grey.shade700,
-                                  fontSize: 9,
-                                ),
-                              ),
-                            ),
-                            const Expanded(
-                              child: Divider(color: Color(0xffddd6cc)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () =>
-                                    notice('Google sign-in is not configured.'),
-                                icon: const Text(
-                                  'G',
-                                  style: TextStyle(
-                                    color: Color(0xff4285f4),
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                label: const Text(
-                                  'Google',
-                                  style: TextStyle(fontSize: 10, color: ink),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(
-                                    color: Color(0xffe3ded5),
-                                  ),
-                                  backgroundColor: Colors.white,
-                                  minimumSize: const Size(0, 34),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(7),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () =>
-                                    notice('Apple sign-in is not configured.'),
-                                icon: const Icon(
-                                  Icons.apple,
-                                  size: 15,
-                                  color: ink,
-                                ),
-                                label: const Text(
-                                  'Apple',
-                                  style: TextStyle(fontSize: 10, color: ink),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(
-                                    color: Color(0xffe3ded5),
-                                  ),
-                                  backgroundColor: Colors.white,
-                                  minimumSize: const Size(0, 34),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(7),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 9),
-                      Center(
-                        child: Wrap(
-                          alignment: WrapAlignment.center,
-                          children: [
-                            Text(
-                              signupMode
-                                  ? 'Have an account? '
-                                  : "Don't have an account? ",
-                              style: const TextStyle(
-                                color: Color(0xff55514c),
-                                fontSize: 9,
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: busy ? null : toggleMode,
-                              child: Text(
-                                signupMode ? 'Sign in' : 'Sign up',
-                                style: const TextStyle(
-                                  color: Color(0xffa66a00),
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 class Home extends StatefulWidget {
@@ -1294,11 +179,14 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   int tab = 0;
+  String iconVariant = 'violet';
   List<dynamic> equipment = [], loans = [];
-  List<dynamic> transactions = [];
+  List<dynamic> transactions = [], notifications = [];
   String historyType = 'ALL';
   String historyEquipment = 'ALL';
   bool loading = true;
+  int get unreadNotifications =>
+      notifications.where((item) => item['is_read'] != true).length;
   String? err;
   WebSocket? socket;
   bool get isAdmin => api.user['role'] == 'ADMIN';
@@ -1307,18 +195,39 @@ class _HomeState extends State<Home> {
     super.initState();
     load();
     if (isAdmin) _connect();
+    if (!isAdmin && Platform.isAndroid) _loadIconVariant();
+  }
+
+  Future<void> _loadIconVariant() async {
+    try {
+      final result = await const MethodChannel('stockroom/app_icon')
+          .invokeMethod<String>('getIcon');
+      if (mounted) setState(() => iconVariant = result ?? 'violet');
+    } catch (_) {}
   }
 
   Future<void> load() async {
     try {
-      final requests = [api.get('/equipment'), api.get('/receipts')];
-      if (isAdmin) requests.add(api.get('/transactions'));
+      final requests = [
+        api.get('/equipment'),
+        api.get('/receipts'),
+        api.get('/me'),
+      ];
+      if (isAdmin)
+        requests.add(api.get('/transactions'));
+      else
+        requests.add(api.get('/notifications'));
       final values = await Future.wait(requests);
       if (!mounted) return;
       setState(() {
         equipment = values[0];
         loans = values[1];
-        if (isAdmin) transactions = values[2];
+        api.user = Map<String, dynamic>.from(values[2]);
+        if (isAdmin) {
+          transactions = values[3];
+        } else {
+          notifications = values[3];
+        }
         err = null;
         loading = false;
       });
@@ -1489,59 +398,202 @@ class _HomeState extends State<Home> {
   }
 
   void _receiptDialog(dynamic r) {
-    final nl = String.fromCharCode(10);
-    final text =
-        'Borrower: ${r['borrower_name']}' +
-        nl +
-        'User ID: ${r['borrower_id']} (${r['account_type']})' +
-        nl +
-        'Equipment: ${r['equipment_name']} (${r['equipment_id']})' +
-        nl +
-        'Serial/barcode: ${r['barcode']}' +
-        nl +
-        'Database record: ${r['unit_record_id']}' +
-        nl +
-        'Borrowed: ${r['borrowed_at']}' +
-        nl +
-        'Due: ${r['due_at']}' +
-        nl +
-        'Status: ${r['loan_status']}';
+    final fields = _receiptFields(r);
+    final text = fields.entries.map((e) => '${e.key}: ${e.value}').join('\n');
     showDialog(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text('Receipt ${r['receipt_number']}'),
-        content: SingleChildScrollView(child: Text(text)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('Close'),
+      builder: (c) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: AppPalette.mist,
+                    child: Icon(
+                      Icons.receipt_long_outlined,
+                      color: AppPalette.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Loan receipt',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                            color: AppPalette.deep,
+                          ),
+                        ),
+                        Text(
+                          '${r['receipt_number']}',
+                          style: const TextStyle(color: AppPalette.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(c).height * .48,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final field in fields.entries)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                field.key.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: AppPalette.muted,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                field.value,
+                                style: const TextStyle(color: AppPalette.ink),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 22),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(c),
+                    child: const Text('Close'),
+                  ),
+                  TextButton(
+                    onPressed: () => _share(text),
+                    child: const Text('Copy'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(c);
+                      _exportReceipt(r);
+                    },
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    child: const Text(
+                      'Download receipt',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          TextButton(onPressed: () => _share(text), child: const Text('Copy')),
-          FilledButton.icon(
-            onPressed: () => _exportReceipt(r),
-            icon: const Icon(Icons.picture_as_pdf),
-            label: const Text('PDF receipt'),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Future<void> _exportReceipt(dynamic r) async {
+    final format = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text('Download receipt'),
+                subtitle: Text('Choose a file format'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('PDF document'),
+                onTap: () => Navigator.pop(context, 'pdf'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.image_outlined),
+                title: const Text('PNG image'),
+                onTap: () => Navigator.pop(context, 'png'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (format == null) return;
+    try {
+      final bytes = format == 'pdf'
+          ? await _pdfReceiptBytes(r)
+          : await _pngReceiptBytes(r);
+      final fileName = 'stockroom-${r['receipt_number']}.$format';
+      if (Platform.isAndroid) {
+        final saved = await const MethodChannel('stockroom/files')
+            .invokeMethod<bool>('saveFile', {
+              'fileName': fileName,
+              'mimeType': format == 'pdf' ? 'application/pdf' : 'image/png',
+              'bytes': bytes,
+            });
+        if (saved == true && mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Saved $fileName')));
+        }
+      } else if (format == 'pdf') {
+        await Printing.sharePdf(bytes: bytes, filename: fileName);
+      } else {
+        throw UnsupportedError('PNG download is available on Android.');
+      }
+    } catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save receipt: $error')),
+        );
+    }
+  }
+
+  Map<String, String> _receiptFields(dynamic r) => <String, String>{
+    'Receipt ID': '${r['receipt_number']}',
+    'Borrower': '${r['borrower_name']}',
+    'User ID': '${r['borrower_id']}',
+    'Account type': '${r['account_type']}',
+    'Equipment': '${r['equipment_name']} (${r['equipment_id']})',
+    'Serial / barcode': '${r['barcode']}',
+    'Database record ID': '${r['unit_record_id']}',
+    'Borrowed': _shortDate(r['borrowed_at']),
+    'Due': _shortDate(r['due_at']),
+    if (r['returned_at'] != null) 'Returned': _shortDate(r['returned_at']),
+    'Status': '${r['loan_status']}',
+  };
+
+  String _shortDate(dynamic raw) {
+    final date = DateTime.tryParse('$raw');
+    if (date == null) return '$raw';
+    final local = date.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  Future<Uint8List> _pdfReceiptBytes(dynamic r) async {
     final document = pw.Document();
-    final fields = <String, String>{
-      'Receipt ID': '${r['receipt_number']}',
-      'Borrower': '${r['borrower_name']}',
-      'User ID': '${r['borrower_id']}',
-      'Account type': '${r['account_type']}',
-      'Equipment': '${r['equipment_name']} (${r['equipment_id']})',
-      'Serial / barcode': '${r['barcode']}',
-      'Database record ID': '${r['unit_record_id']}',
-      'Borrowed': '${r['borrowed_at']}',
-      'Due': '${r['due_at']}',
-      if (r['returned_at'] != null) 'Returned': '${r['returned_at']}',
-      'Status': '${r['loan_status']}',
-    };
+    final fields = _receiptFields(r);
     document.addPage(
       pw.Page(
         build: (_) => pw.Column(
@@ -1564,10 +616,62 @@ class _HomeState extends State<Home> {
         ),
       ),
     );
-    await Printing.sharePdf(
-      bytes: await document.save(),
-      filename: 'stockroom-${r['receipt_number']}.pdf',
+    return document.save();
+  }
+
+  Future<Uint8List> _pngReceiptBytes(dynamic r) async {
+    const width = 1000.0;
+    const height = 1420.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawColor(Colors.white, BlendMode.src);
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, width, 180),
+      Paint()..color = AppPalette.primary,
     );
+    void line(
+      String value,
+      double x,
+      double y,
+      double size,
+      Color color, {
+      FontWeight weight = FontWeight.normal,
+    }) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: value,
+          style: TextStyle(fontSize: size, color: color, fontWeight: weight),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 3,
+        ellipsis: '…',
+      )..layout(maxWidth: width - x - 64);
+      painter.paint(canvas, Offset(x, y));
+    }
+
+    line('STOCKROOM', 64, 52, 28, Colors.white, weight: FontWeight.bold);
+    line('Loan receipt', 64, 96, 40, Colors.white, weight: FontWeight.bold);
+    var y = 220.0;
+    for (final entry in _receiptFields(r).entries) {
+      line(
+        entry.key.toUpperCase(),
+        64,
+        y,
+        20,
+        AppPalette.muted,
+        weight: FontWeight.bold,
+      );
+      line(entry.value, 64, y + 34, 28, AppPalette.deep);
+      y += 102;
+    }
+    final image = await recorder.endRecording().toImage(
+      width.toInt(),
+      height.toInt(),
+    );
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) throw StateError('Could not create PNG receipt');
+    return data.buffer.asUint8List();
   }
 
   void _share(String text) async {
@@ -1584,7 +688,7 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     final names = isAdmin
         ? ['Home', 'Products', 'Scan', 'History', 'Settings']
-        : ['Home', 'Inventory', 'My loans'];
+        : ['Home', 'Scan', 'Items', 'History', 'Settings'];
     final pages = isAdmin
         ? [
             _dashboard(),
@@ -1593,10 +697,16 @@ class _HomeState extends State<Home> {
             _history(),
             _settingsPage(),
           ]
-        : [_dashboard(), _inventory(), _loans()];
+        : [
+            _dashboard(),
+            _studentScan(),
+            _studentItems(),
+            _studentHistory(),
+            _studentSettings(),
+          ];
     IconData iconFor(String name) => switch (name) {
       'Home' => Icons.home_outlined,
-      'Products' || 'Inventory' => Icons.inventory_2_outlined,
+      'Products' || 'Inventory' || 'Items' => Icons.inventory_2_outlined,
       'Loans' || 'My loans' => Icons.history,
       'Scan' => Icons.qr_code_scanner,
       'History' => Icons.receipt_long_outlined,
@@ -1606,27 +716,29 @@ class _HomeState extends State<Home> {
       builder: (context, box) {
         final wide = box.maxWidth >= 760;
         return Scaffold(
-          appBar: AppBar(
-            backgroundColor: isAdmin && wide ? Colors.white : navy,
-            foregroundColor: isAdmin && wide ? navy : Colors.white,
-            title: Text(
-              isAdmin && wide
-                  ? 'Stockroom - Campus Inventory'
-                  : 'Stockroom / ${names[tab]}',
-            ),
-            actions: [
-              if (err != null)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(Icons.cloud_off),
-                ),
-              IconButton(
-                tooltip: 'Sign out',
-                onPressed: widget.onLogout,
-                icon: const Icon(Icons.logout),
-              ),
-            ],
-          ),
+          appBar: isAdmin
+              ? AppBar(
+                  backgroundColor: isAdmin && wide ? Colors.white : navy,
+                  foregroundColor: isAdmin && wide ? navy : Colors.white,
+                  title: Text(
+                    isAdmin && wide
+                        ? 'Stockroom - Campus Inventory'
+                        : 'Stockroom / ${names[tab]}',
+                  ),
+                  actions: [
+                    if (err != null)
+                      const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Icon(Icons.cloud_off),
+                      ),
+                    IconButton(
+                      tooltip: 'Sign out',
+                      onPressed: widget.onLogout,
+                      icon: const Icon(Icons.logout),
+                    ),
+                  ],
+                )
+              : null,
           body: wide
               ? Row(
                   children: [
@@ -1675,7 +787,7 @@ class _HomeState extends State<Home> {
                                 ),
                                 child: ListTile(
                                   selected: tab == i,
-                                  selectedTileColor: const Color(0xff9ce6bc),
+                                  selectedTileColor: AppPalette.pearl,
                                   selectedColor: navy,
                                   textColor: Colors.white,
                                   iconColor: Colors.white,
@@ -1711,6 +823,73 @@ class _HomeState extends State<Home> {
               : pages[tab],
           bottomNavigationBar: wide
               ? null
+              : !isAdmin
+              ? SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                    child: Material(
+                      elevation: 14,
+                      shadowColor: AppPalette.deep.withOpacity(.18),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(30),
+                      clipBehavior: Clip.antiAlias,
+                      child: SizedBox(
+                        height: 72,
+                        child: Row(
+                          children: [
+                            for (var i = 0; i < names.length; i++)
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Material(
+                                    color: tab == i
+                                        ? AppPalette.mist
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(24),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: InkWell(
+                                      overlayColor: WidgetStatePropertyAll(
+                                        AppPalette.pearl.withOpacity(.5),
+                                      ),
+                                      onTap: () => setState(() => tab = i),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            iconFor(names[i]),
+                                            size: 23,
+                                            color: tab == i
+                                                ? AppPalette.primary
+                                                : AppPalette.muted,
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            names[i],
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: tab == i
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                              color: tab == i
+                                                  ? AppPalette.primary
+                                                  : AppPalette.muted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                )
               : NavigationBarTheme(
                   data: NavigationBarThemeData(
                     labelTextStyle: WidgetStateProperty.resolveWith(
@@ -1721,9 +900,7 @@ class _HomeState extends State<Home> {
                   ),
                   child: NavigationBar(
                     backgroundColor: isAdmin ? navy : Colors.white,
-                    indicatorColor: isAdmin
-                        ? const Color(0xff9ce6bc)
-                        : const Color(0xffcdece1),
+                    indicatorColor: AppPalette.pearl,
                     selectedIndex: tab,
                     onDestinationSelected: (i) => setState(() => tab = i),
                     destinations: [
@@ -1738,13 +915,11 @@ class _HomeState extends State<Home> {
                     ],
                   ),
                 ),
-          floatingActionButton: tab == 0
+          floatingActionButton: isAdmin && tab == 0
               ? FloatingActionButton.extended(
-                  onPressed: isAdmin
-                      ? _editProduct
-                      : () => scan(returning: false),
-                  icon: Icon(isAdmin ? Icons.add : Icons.qr_code_scanner),
-                  label: Text(isAdmin ? 'Add product' : 'Borrow item'),
+                  onPressed: _editProduct,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add product'),
                 )
               : null,
         );
@@ -1752,21 +927,149 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Widget _dashboardHero({bool admin = false}) => Container(
+    height: 185,
+    decoration: BoxDecoration(
+      gradient: AppPalette.metallic,
+      borderRadius: BorderRadius.circular(22),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x286c4cce),
+          blurRadius: 18,
+          offset: Offset(0, 9),
+        ),
+      ],
+    ),
+    child: Stack(
+      children: [
+        Positioned(
+          right: -35,
+          top: -56,
+          child: Container(
+            width: 175,
+            height: 175,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white24, width: 19),
+            ),
+          ),
+        ),
+        const Positioned(
+          right: 24,
+          bottom: 21,
+          child: Icon(
+            Icons.qr_code_2_rounded,
+            size: 64,
+            color: Color(0x99ffffff),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(21, 22, 18, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'STOCKROOM  /  FEU TECH',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                admin ? 'Inventory in focus' : 'Your equipment,\nat a glance',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 23,
+                  height: 1.12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                admin
+                    ? 'Manage stock, loans, and returns in one place.'
+                    : 'Borrow, track, and return with confidence.',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _dashboard() {
     if (isAdmin) return _adminDashboard();
     if (loading) return const Center(child: CircularProgressIndicator());
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         children: [
-          Text(
-            'Good ${DateTime.now().hour < 12 ? 'morning' : 'day'}, ${api.user['name']}',
-            style: Theme.of(context).textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.bold, color: navy),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                height: 20,
+                color: AppPalette.mist.withOpacity(.72),
+              ),
+            ),
           ),
-          const SizedBox(height: 6),
-          Text('${api.user['role']} · ${api.user['account_id']}'),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Good day, ${'${api.user['name'] ?? ''}'.trim().split(' ').first}!',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold, color: navy),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${api.user['account_id']}\n${api.user['email']}',
+                      style: const TextStyle(
+                        color: AppPalette.muted,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Leaderboard',
+                icon: const Icon(Icons.emoji_events_outlined),
+                onPressed: _openLeaderboard,
+              ),
+              IconButton(
+                tooltip: 'History',
+                icon: const Icon(Icons.history),
+                onPressed: () => setState(() => tab = 3),
+              ),
+              IconButton(
+                tooltip: 'Notifications',
+                icon: unreadNotifications == 0
+                    ? const Icon(Icons.notifications_none)
+                    : Badge.count(
+                        count: unreadNotifications,
+                        child: const Icon(Icons.notifications_none),
+                      ),
+                onPressed: _openNotifications,
+              ),
+            ],
+          ),
           if (err != null)
             Card(
               color: Colors.orange.shade50,
@@ -1778,24 +1081,39 @@ class _HomeState extends State<Home> {
               ),
             ),
           const SizedBox(height: 18),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => scan(returning: false),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Borrow item'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
             children: [
-              _metric(
-                'Equipment types',
-                '${equipment.length}',
-                Icons.inventory_2,
+              Expanded(
+                child: _studentMetric(
+                  'Types',
+                  '${equipment.length}',
+                  Icons.inventory_2_outlined,
+                ),
               ),
-              _metric(
-                'Available units',
-                '${equipment.fold<int>(0, (s, e) => s + (e['available'] as int))}',
-                Icons.check_circle,
+              const SizedBox(width: 8),
+              Expanded(
+                child: _studentMetric(
+                  'Available',
+                  '${equipment.fold<int>(0, (s, e) => s + (e['available'] as int))}',
+                  Icons.check_circle_outline,
+                ),
               ),
-              _metric(
-                isAdmin ? 'Active loans' : 'My active loans',
-                '${loans.where((x) => x['loan_status'] == 'ACTIVE').length}',
-                Icons.assignment,
+              const SizedBox(width: 8),
+              Expanded(
+                child: _studentMetric(
+                  'My loans',
+                  '${loans.where((x) => x['loan_status'] == 'ACTIVE').length}',
+                  Icons.assignment_outlined,
+                ),
               ),
             ],
           ),
@@ -1812,7 +1130,7 @@ class _HomeState extends State<Home> {
                   if (isAdmin) {
                     _loansDialog();
                   } else {
-                    setState(() => tab = 2);
+                    setState(() => tab = 3);
                   }
                 },
                 child: const Text('View all'),
@@ -1842,6 +1160,8 @@ class _HomeState extends State<Home> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          _dashboardHero(admin: true),
+          const SizedBox(height: 22),
           Row(
             children: [
               Expanded(
@@ -2013,7 +1333,7 @@ class _HomeState extends State<Home> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: low ? const Color(0xffffe2df) : const Color(0xffd9f2df),
+        color: low ? const Color(0xffffe2df) : AppPalette.mist,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
@@ -2021,14 +1341,16 @@ class _HomeState extends State<Home> {
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.bold,
-          color: low ? Colors.red.shade800 : Colors.green.shade900,
+          color: low ? Colors.red.shade800 : AppPalette.deep,
         ),
       ),
     );
   }
 
   Widget _metric(String title, String value, IconData icon) => SizedBox(
-    width: 180,
+    width: MediaQuery.sizeOf(context).width < 600
+        ? (MediaQuery.sizeOf(context).width - 52) / 2
+        : 180,
     child: Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -2048,6 +1370,432 @@ class _HomeState extends State<Home> {
       ),
     ),
   );
+
+  Widget _studentMetric(String title, String value, IconData icon) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppPalette.primary, size: 22),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 23,
+              fontWeight: FontWeight.bold,
+              color: AppPalette.deep,
+            ),
+          ),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, color: AppPalette.muted),
+          ),
+        ],
+      ),
+    ),
+  );
+  void _openLeaderboard() {
+    final future = api.get('/leaderboard');
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Leaderboard')),
+          body: FutureBuilder<dynamic>(
+            future: future,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData && !snapshot.hasError) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError)
+                return Center(
+                  child: Text('Could not load leaderboard: ${snapshot.error}'),
+                );
+              final people = List<dynamic>.from(snapshot.data as List);
+              if (people.isEmpty)
+                return const Center(child: Text('No student loans yet.'));
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: people.length,
+                itemBuilder: (context, index) => Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppPalette.mist,
+                      child: Text(
+                        '${index + 1}',
+                        style: const TextStyle(color: navy),
+                      ),
+                    ),
+                    title: Text('${people[index]['name']}'),
+                    subtitle: Text(
+                      '${people[index]['program']}\n${people[index]['year_level']} • ${people[index]['section']}\n${people[index]['borrow_count']} items borrowed',
+                    ),
+                    isThreeLine: true,
+                    trailing: index < 3
+                        ? Icon(
+                            Icons.emoji_events,
+                            color: index == 0
+                                ? const Color(0xffd39a2e)
+                                : AppPalette.primary,
+                          )
+                        : null,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openNotifications() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => NotificationPage(
+          initial: notifications,
+          onRead: (id) => setState(() {
+            for (final notice in notifications) {
+              if (notice['id'] == id) notice['is_read'] = true;
+            }
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _studentScan() => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      Text(
+        'Scan an item',
+        style: Theme.of(context).textTheme.headlineSmall
+            ?.copyWith(color: navy, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Use the item barcode or QR code to borrow or return equipment.',
+        style: TextStyle(color: AppPalette.muted),
+      ),
+      const SizedBox(height: 22),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const Icon(
+                Icons.qr_code_scanner,
+                size: 74,
+                color: AppPalette.primary,
+              ),
+              const SizedBox(height: 13),
+              const Text(
+                'Borrow equipment',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Choose a due date, scan the item, and confirm the loan.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppPalette.muted),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => scan(returning: false),
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Scan to borrow'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
+      Card(
+        child: ListTile(
+          leading: const Icon(
+            Icons.assignment_return_outlined,
+            color: AppPalette.primary,
+          ),
+          title: const Text('Return an item'),
+          subtitle: const Text(
+            'Scan an item you borrowed to complete its return.',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => scan(returning: true),
+        ),
+      ),
+    ],
+  );
+
+  Widget _studentItems() {
+    final items =
+        equipment.where((item) => (item['available'] as num) > 0).toList()
+          ..sort(
+            (a, b) => '${a['name']}'.toLowerCase().compareTo(
+              '${b['name']}'.toLowerCase(),
+            ),
+          );
+    final hotCount = items.fold<int>(
+      0,
+      (best, item) => (item['borrow_count'] as num? ?? 0).toInt() > best
+          ? (item['borrow_count'] as num).toInt()
+          : best,
+    );
+    final matches = items
+        .where(
+          (item) => '${item['name']} ${item['id']} ${item['category']}'
+              .toLowerCase()
+              .contains(_query),
+        )
+        .toList();
+    return RefreshIndicator(
+      onRefresh: load,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            'Items',
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(color: navy, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Available equipment, sorted by name.',
+            style: TextStyle(color: AppPalette.muted),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: 'Search items',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onChanged: (value) =>
+                setState(() => _query = value.toLowerCase().trim()),
+          ),
+          const SizedBox(height: 12),
+          if (matches.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No available items match your search.'),
+            ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: matches.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: MediaQuery.sizeOf(context).width < 600 ? 2 : 3,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              mainAxisExtent: 180,
+            ),
+            itemBuilder: (context, index) {
+              final item = matches[index];
+              return Material(
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: const BorderSide(color: AppPalette.line),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  overlayColor: WidgetStatePropertyAll(
+                    AppPalette.pearl.withOpacity(.35),
+                  ),
+                  onTap: () => _studentItemDetail(item),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: AppPalette.mist,
+                              child: Icon(
+                                Icons.inventory_2_outlined,
+                                color: AppPalette.primary,
+                              ),
+                            ),
+                            if (hotCount > 0 &&
+                                (item['borrow_count'] as num? ?? 0).toInt() ==
+                                    hotCount)
+                              const Tooltip(
+                                message: 'Most borrowed',
+                                child: Icon(
+                                  Icons.local_fire_department,
+                                  color: Color(0xffe9784d),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${item['name']}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${item['category']}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppPalette.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${item['available']} in stock',
+                          style: const TextStyle(
+                            color: AppPalette.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _studentItemDetail(dynamic item) async {
+    try {
+      final detail = await api.get(
+        '/equipment/${Uri.encodeComponent('${item['id']}')}',
+      );
+      if (!mounted) return;
+      final units = List<dynamic>.from(detail['units'] as List);
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .68,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${item['name']}',
+                    style: const TextStyle(
+                      fontSize: 21,
+                      color: navy,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${item['available']} available • ${item['total']} total',
+                    style: const TextStyle(color: AppPalette.muted),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Physical items',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        for (final unit in units)
+                          ListTile(
+                            leading: const Icon(Icons.inventory_2_outlined),
+                            title: Text('${unit['serial']}'),
+                            trailing: Text(
+                              '${unit['status']}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: (item['available'] as num) > 0
+                          ? () {
+                              Navigator.pop(sheetContext);
+                              scan(returning: false);
+                            }
+                          : null,
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Borrow item'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not load item: $e')));
+    }
+  }
+
+  Widget _studentHistory() => RefreshIndicator(
+    onRefresh: load,
+    child: ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          'History',
+          style: Theme.of(context).textTheme.headlineSmall
+              ?.copyWith(color: navy, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          'Your loans and receipts.',
+          style: TextStyle(color: AppPalette.muted),
+        ),
+        const SizedBox(height: 16),
+        if (loans.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('No borrowed items yet.'),
+          ),
+        for (final loan in loans)
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.receipt_long_outlined,
+                color: AppPalette.primary,
+              ),
+              title: Text('${loan['equipment_name']}'),
+              subtitle: Text(
+                '${loan['loan_status']} • ${_shortDate(loan['borrowed_at'])}',
+              ),
+              trailing: IconButton(
+                tooltip: 'Download receipt',
+                icon: const Icon(Icons.download_outlined),
+                onPressed: () => _exportReceipt(loan),
+              ),
+              onTap: () => _receiptDialog(loan),
+            ),
+          ),
+      ],
+    ),
+  );
+
   Widget _inventory() => RefreshIndicator(
     onRefresh: load,
     child: ListView(
@@ -2585,6 +2333,179 @@ class _HomeState extends State<Home> {
     ],
   );
 
+  Widget _studentSettings() => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      Text(
+        'Settings',
+        style: Theme.of(context).textTheme.headlineSmall
+            ?.copyWith(color: navy, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 14),
+      _settingsTile(
+        leading: const CircleAvatar(
+          backgroundColor: AppPalette.mist,
+          child: Icon(Icons.person_outline, color: AppPalette.primary),
+        ),
+        title: Text('${api.user['name']}'),
+        subtitle: Text(
+          'Student ID ${api.user['account_id']} • ${api.user['section'] ?? ''}',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) =>
+                StudentProfileEditor(onSaved: () => setState(() {})),
+          ),
+        ),
+      ),
+      const SizedBox(height: 18),
+      const Text(
+        'App preferences',
+        style: TextStyle(fontWeight: FontWeight.bold, color: AppPalette.deep),
+      ),
+      const SizedBox(height: 8),
+      _settingsTile(
+        leading: const Icon(Icons.apps_outlined),
+        title: const Text('App icon'),
+        subtitle: Text(
+          Platform.isAndroid ? 'Current: $iconVariant' : 'Available on Android',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: Platform.isAndroid ? _chooseAppIcon : null,
+      ),
+      _settingsTile(
+        leading: const Icon(Icons.notifications_none),
+        title: const Text('Notifications'),
+        subtitle: const Text('Loan and return activity'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _openNotifications,
+      ),
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.cloud_outlined),
+          title: const Text('Backend connection'),
+          subtitle: Text(api.base),
+        ),
+      ),
+      const SizedBox(height: 18),
+      _settingsTile(
+        leading: const Icon(Icons.logout),
+        title: const Text('Log out'),
+        onTap: _confirmLogout,
+      ),
+    ],
+  );
+
+  Widget _settingsTile({
+    required Widget leading,
+    required Widget title,
+    Widget? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: AppPalette.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        overlayColor: WidgetStatePropertyAll(AppPalette.pearl.withOpacity(.35)),
+        child: ListTile(
+          leading: leading,
+          title: title,
+          subtitle: subtitle,
+          trailing: trailing,
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _confirmLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Log out?'),
+        content: const Text(
+          'You will need to sign in again to borrow items and view your history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) widget.onLogout();
+  }
+
+  void _chooseAppIcon() => showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Choose app icon',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                color: AppPalette.deep,
+              ),
+            ),
+            for (final (value, label, color) in [
+              ('violet', 'Violet', AppPalette.primary),
+              ('silver', 'Silver', const Color(0xffa7a9bd)),
+              ('midnight', 'Midnight', AppPalette.deep),
+            ])
+              _settingsTile(
+                leading: CircleAvatar(
+                  backgroundColor: color,
+                  child: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: Colors.white,
+                  ),
+                ),
+                title: Text(label),
+                trailing: iconVariant == value
+                    ? const Icon(Icons.check, color: AppPalette.primary)
+                    : null,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _setAppIcon(value);
+                },
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _setAppIcon(String choice) async {
+    try {
+      await const MethodChannel('stockroom/app_icon')
+          .invokeMethod<void>('setIcon', {'icon': choice});
+      if (mounted) setState(() => iconVariant = choice);
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not change app icon: $e')),
+        );
+    }
+  }
+
   Widget _history() {
     final rows = transactions
         .where(
@@ -2670,38 +2591,15 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _loans() => RefreshIndicator(
-    onRefresh: load,
-    child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (isAdmin || loans.any((x) => x['loan_status'] == 'ACTIVE'))
-          FilledButton.icon(
-            onPressed: () => scan(returning: true),
-            icon: const Icon(Icons.assignment_return),
-            label: const Text('Return by QR/barcode'),
-          ),
-        const SizedBox(height: 8),
-        if (loans.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Text('No loans yet'),
-            ),
-          ),
-        ...loans.map(_loanCard),
-      ],
-    ),
-  );
   Widget _loanCard(dynamic r) => Card(
     child: ListTile(
       leading: Icon(
         r['loan_status'] == 'ACTIVE' ? Icons.schedule : Icons.check_circle,
-        color: r['loan_status'] == 'ACTIVE' ? Colors.orange : teal,
+        color: r['loan_status'] == 'ACTIVE' ? AppPalette.primary : teal,
       ),
       title: Text('${r['equipment_name']} · ${r['equipment_id']}'),
       subtitle: Text(
-        '${r['borrower_name']} (${r['borrower_id']})\n${r['barcode']} · Due ${r['due_at']}',
+        '${r['borrower_name']} (${r['borrower_id']})\n${r['barcode']} · Due ${_shortDate(r['due_at'])}',
       ),
       isThreeLine: true,
       trailing: Text(r['loan_status']),
