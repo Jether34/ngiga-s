@@ -1,0 +1,11 @@
+.git
+.dart_tool
+.flutter-plugins-dependencies
+build
+**/build
+**/.gradle
+backend/.env
+backend/*.db
+backend/*.log
+backend/__pycache__
+backend/cpp/vendor/bcrypt/.git
