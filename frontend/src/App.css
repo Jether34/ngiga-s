@@ -488,6 +488,38 @@ select:disabled {
   letter-spacing: -0.07em;
   margin: 20px 0 24px;
 }
+.welcome-headline.is-fading {
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+.headline-line {
+  display: block;
+  position: relative;
+}
+.headline-reserve,
+.headline-typed {
+  display: block;
+}
+.headline-reserve {
+  visibility: hidden;
+}
+.headline-typed {
+  position: absolute;
+  inset: 0;
+}
+.headline-cursor {
+  display: inline-block;
+  width: 0.035em;
+  height: 0.8em;
+  margin-left: 0.045em;
+  border-radius: 2px;
+  background: currentColor;
+  vertical-align: -0.055em;
+  animation: headline-blink 800ms steps(1, end) infinite;
+}
+@keyframes headline-blink {
+  50% { opacity: 0; }
+}
 .welcome-copy h1 em,
 .auth-aside h2 em {
   font-style: normal;

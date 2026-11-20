@@ -33,6 +33,30 @@ const publicLinks = [
   { label: "Our Goal", path: "/goal" },
 ];
 
+const headlineLines = ["Everything you need.", "Ready when you are."];
+const headlineCycleMs = 10000;
+const headlineStepMs = 55;
+const headlinePauseMs = 400;
+const headlineFadeStartMs = 9600;
+const headlineSecondStartMs = headlineLines[0].length * headlineStepMs + headlinePauseMs;
+const headlineFinishMs = headlineSecondStartMs + headlineLines[1].length * headlineStepMs;
+
+function headlineFrame(elapsed) {
+  const firstCount = Math.min(headlineLines[0].length, Math.floor(elapsed / headlineStepMs));
+  const secondCount = Math.min(
+    headlineLines[1].length,
+    Math.max(0, Math.floor((elapsed - headlineSecondStartMs) / headlineStepMs)),
+  );
+  return {
+    firstCount,
+    secondCount,
+    cursorLine: elapsed < headlineLines[0].length * headlineStepMs
+      ? 0
+      : elapsed >= headlineSecondStartMs && elapsed < headlineFinishMs ? 1 : -1,
+    fading: elapsed >= headlineFadeStartMs,
+  };
+}
+
 export function PublicHeader({ navigate, current = "/" }) {
   return (
     <header className="public-header">
@@ -78,6 +102,34 @@ export function PublicFooter() {
 export function Welcome({ navigate }) {
   const [selectedVisual, setSelectedVisual] = useState(null);
   const visualRef = useRef(null);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const [headline, setHeadline] = useState(() => headlineFrame(0));
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReducedMotion(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (reducedMotion) return undefined;
+    const startedAt = performance.now();
+    const tick = () => {
+      const next = headlineFrame((performance.now() - startedAt) % headlineCycleMs);
+      setHeadline((previous) =>
+        previous.firstCount === next.firstCount &&
+        previous.secondCount === next.secondCount &&
+        previous.cursorLine === next.cursorLine &&
+        previous.fading === next.fading ? previous : next,
+      );
+    };
+    tick();
+    const timer = window.setInterval(tick, headlineStepMs);
+    return () => window.clearInterval(timer);
+  }, [reducedMotion]);
   const selectVisualOnKey = (event, card) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -109,10 +161,21 @@ export function Welcome({ navigate }) {
           <div className="pill">
             <Sparkles size={15} /> A simpler way to borrow on campus
           </div>
-          <h1>
-            Everything you need.
-            <br />
-            <em>Ready when you are.</em>
+          <h1 className={`welcome-headline${!reducedMotion && headline.fading ? " is-fading" : ""}`} aria-label={headlineLines.join(" ")}>
+            <span className="headline-line" aria-hidden="true">
+              <span className="headline-reserve">{headlineLines[0]}</span>
+              <span className="headline-typed">
+                {headlineLines[0].slice(0, reducedMotion ? headlineLines[0].length : headline.firstCount)}
+                {!reducedMotion && headline.cursorLine === 0 && <span className="headline-cursor" />}
+              </span>
+            </span>
+            <span className="headline-line" aria-hidden="true">
+              <em className="headline-reserve">{headlineLines[1]}</em>
+              <em className="headline-typed">
+                {headlineLines[1].slice(0, reducedMotion ? headlineLines[1].length : headline.secondCount)}
+                {!reducedMotion && headline.cursorLine === 1 && <span className="headline-cursor" />}
+              </em>
+            </span>
           </h1>
           <p>
             Find the right equipment, scan its code, and review your loan in a
