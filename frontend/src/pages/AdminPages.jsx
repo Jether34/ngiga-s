@@ -1335,6 +1335,7 @@ export function AdminScan({ products, units, loans, notify }) {
             key={name}
             role="tab"
             aria-selected={mode === name}
+            aria-controls="scan-mode-panel"
             className={mode === name ? "active" : ""}
             onClick={() => setMode(name)}
           >
@@ -1347,6 +1348,7 @@ export function AdminScan({ products, units, loans, notify }) {
           </button>
         ))}
       </div>
+      <div className="mode-content" key={mode} id="scan-mode-panel" role="tabpanel" aria-label={`${mode} workflow`}>
       {mode === "Receive" ? (
         <>
           {showCapture && (
@@ -1393,6 +1395,7 @@ export function AdminScan({ products, units, loans, notify }) {
       ) : (
         <ReturnMode products={products} loans={loans} notify={notify} />
       )}
+      </div>
     </>
   );
 }

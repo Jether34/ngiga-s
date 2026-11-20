@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, ArrowRight } from "lucide-react";
 import {
   loans as fixtureLoans,
@@ -56,6 +56,13 @@ function NotFound({ navigate, session }) {
 
 function App() {
   const [route, setRoute] = useState(window.location.pathname);
+  const [routePhase, setRoutePhase] = useState("idle");
+  const routeRef = useRef(window.location.pathname);
+  const pendingRoute = useRef(null);
+  const exitTimer = useRef(null);
+  const enterTimer = useRef(null);
+  const toastTimer = useRef(null);
+  const toastExitTimer = useRef(null);
   const [session, setSessionState] = useState(() => {
     try {
       return JSON.parse(sessionStorage.getItem("equip-demo-session"));
@@ -72,14 +79,49 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [dataError, setDataError] = useState("");
   const [toast, setToast] = useState(null);
+  const transitionTo = useCallback((path) => {
+    if (path === (pendingRoute.current || routeRef.current)) return;
+    window.clearTimeout(exitTimer.current);
+    window.clearTimeout(enterTimer.current);
+    pendingRoute.current = path;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      routeRef.current = path;
+      pendingRoute.current = null;
+      setRoute(path);
+      setRoutePhase("idle");
+      window.scrollTo(0, 0);
+      return;
+    }
+    setRoutePhase("exit");
+    exitTimer.current = window.setTimeout(() => {
+      const next = pendingRoute.current;
+      pendingRoute.current = null;
+      routeRef.current = next;
+      setRoute(next);
+      setRoutePhase("enter");
+      window.scrollTo(0, 0);
+      enterTimer.current = window.setTimeout(() => setRoutePhase("idle"), 330);
+    }, 170);
+  }, []);
   const navigate = (path) => {
+    if (path === window.location.pathname) return;
     window.history.pushState({}, "", path);
-    setRoute(path);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    transitionTo(path);
+  };
+  const dismissNotice = () => {
+    window.clearTimeout(toastTimer.current);
+    window.clearTimeout(toastExitTimer.current);
+    setToast((current) => current ? { ...current, leaving: true } : null);
+    toastExitTimer.current = window.setTimeout(() => setToast(null), 220);
   };
   const notify = (text, tone = "success") => {
-    setToast({ text, tone });
-    window.setTimeout(() => setToast(null), 5500);
+    window.clearTimeout(toastTimer.current);
+    window.clearTimeout(toastExitTimer.current);
+    setToast({ text, tone, leaving: false });
+    toastTimer.current = window.setTimeout(() => {
+      setToast((current) => current ? { ...current, leaving: true } : null);
+      toastExitTimer.current = window.setTimeout(() => setToast(null), 220);
+    }, 5300);
   };
   const setSession = (user) => {
     setSessionState(user);
@@ -118,10 +160,16 @@ function App() {
     }
   };
   useEffect(() => {
-    const onPop = () => setRoute(window.location.pathname);
+    const onPop = () => transitionTo(window.location.pathname);
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.clearTimeout(exitTimer.current);
+      window.clearTimeout(enterTimer.current);
+      window.clearTimeout(toastTimer.current);
+      window.clearTimeout(toastExitTimer.current);
+    };
+  }, [transitionTo]);
   const page = route.split("/")[2];
   let content;
   if (route === "/") content = <Welcome navigate={navigate} />;
@@ -243,8 +291,10 @@ function App() {
   } else content = <NotFound navigate={navigate} session={session} />;
   return (
     <>
-      {content}
-      <Notice message={toast} onClose={() => setToast(null)} />
+      <div className="route-frame" data-phase={routePhase}>
+        {content}
+      </div>
+      <Notice message={toast} onClose={dismissNotice} />
     </>
   );
 }

@@ -64,6 +64,7 @@ export function Shell({
             <button
               key={name}
               className={`nav-link ${current === name.toLowerCase() ? "active" : ""}`}
+              aria-current={current === name.toLowerCase() ? "page" : undefined}
               onClick={() => {
                 navigate(prefix + "/" + name.toLowerCase());
                 setMenuOpen(false);
@@ -71,9 +72,7 @@ export function Shell({
             >
               <Icon size={19} />
               <span>{name}</span>
-              {current === name.toLowerCase() && (
-                <span className="nav-active-dot" />
-              )}
+              <span className="nav-active-dot" aria-hidden="true" />
             </button>
           ))}
         </nav>
@@ -114,13 +113,13 @@ export function Shell({
           </button>
         </div>
       </aside>
-      {menuOpen && (
-        <button
-          className="mobile-scrim"
-          aria-label="Close menu"
-          onClick={() => setMenuOpen(false)}
-        />
-      )}
+      <button
+        className={`mobile-scrim ${menuOpen ? "visible" : ""}`}
+        aria-label="Close menu"
+        aria-hidden={!menuOpen}
+        tabIndex={menuOpen ? 0 : -1}
+        onClick={() => setMenuOpen(false)}
+      />
       <div className="app-main">
         <header className="topbar">
           <div className="topbar-left">

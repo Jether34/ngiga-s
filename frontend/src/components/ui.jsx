@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Package,
   Search,
@@ -21,9 +21,10 @@ const icons = { camera: Camera, audio: Mic, laptop: Laptop, video: Video };
 export function Badge({ children, tone = "neutral" }) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }
-export function IconButton({ icon: Icon, label, onClick, className = "" }) {
+export function IconButton({ icon: Icon, label, onClick, className = "", buttonRef }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       className={`icon-button ${className}`}
       aria-label={label}
@@ -52,7 +53,7 @@ export function Empty({
 export function Notice({ message, onClose }) {
   return (
     message && (
-      <div className={`toast ${message.tone || "success"}`} role="status">
+      <div key={`${message.tone}:${message.text}`} className={`toast ${message.tone || "success"}${message.leaving ? " is-leaving" : ""}`} role="status">
         <span>
           {message.tone === "error" ? (
             <AlertCircle size={18} />
@@ -100,6 +101,19 @@ export function Modal({ title, children, onClose, size = "" }) {
   const closeRef = useRef(null);
   const previous = useRef(document.activeElement);
   const onCloseRef = useRef(onClose);
+  const closingRef = useRef(false);
+  const closeTimer = useRef(null);
+  const [closing, setClosing] = useState(false);
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onCloseRef.current();
+      return;
+    }
+    setClosing(true);
+    closeTimer.current = window.setTimeout(() => onCloseRef.current(), 210);
+  }, []);
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
@@ -107,7 +121,7 @@ export function Modal({ title, children, onClose, size = "" }) {
     const returnFocus = previous.current;
     closeRef.current?.focus();
     const onKey = (event) => {
-      if (event.key === "Escape") onCloseRef.current();
+      if (event.key === "Escape") requestClose();
       if (event.key === "Tab") {
         const focusable = [
           ...document.querySelectorAll(
@@ -128,18 +142,19 @@ export function Modal({ title, children, onClose, size = "" }) {
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      window.clearTimeout(closeTimer.current);
       returnFocus?.focus?.();
     };
-  }, []);
+  }, [requestClose]);
   return (
     <div
-      className="modal-backdrop"
+      className={`modal-backdrop${closing ? " is-closing" : ""}`}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <section
-        className={`modal ${size}`}
+        className={`modal ${size}${closing ? " is-closing" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -149,8 +164,9 @@ export function Modal({ title, children, onClose, size = "" }) {
           <IconButton
             icon={X}
             label="Close dialog"
-            onClick={onClose}
+            onClick={requestClose}
             className="modal-close"
+            buttonRef={closeRef}
           />
         </div>
         {children}
