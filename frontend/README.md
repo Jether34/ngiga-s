@@ -30,6 +30,16 @@ Copy `.env.example` to `.env.local` and adjust the school name and permitted sch
 
 `src/services/demoService.js` is the service boundary for authentication, catalog, unit lookup, loans, transactions, users, receipts, low-stock reporting, and future live-event subscriptions. Replace its fixture-backed method bodies with API requests that return the same `{ ok, data }` or `{ ok: false, error }` shape. Server authorization, unique unit codes, atomic issue and return operations, stock consistency, receipt generation, Gmail delivery, and live synchronization all require backend services.
 
+## Deployment preparation
+
+- Run `npm run lint` and `npm run build`; publish the generated `dist/` directory when deploying the frontend.
+- Configure the host to serve `index.html` for client routes such as `/about`, `/login`, `/student/home`, and `/admin/products`. Vite preview supplies this fallback locally; a static host needs an equivalent rewrite.
+- `VITE_SCHOOL_NAME` and `VITE_SCHOOL_DOMAINS` are embedded at build time. Set them before building, and rebuild after changing them. Do not put secrets in `VITE_` variables.
+- Serve over HTTPS for camera access outside localhost. Manual item-code entry remains available when camera permissions or `BarcodeDetector` are unavailable.
+- Replace the demo service with authenticated APIs before accepting real accounts or inventory transactions. The current in-browser session, local validations, contact preview, and fixture data are not production persistence or authorization.
+- Have the institution review and replace the draft Terms of Use, Privacy Policy, sample contact details, and school email domain before public launch.
+- The interface uses Google Fonts with local font fallbacks. If external font requests are restricted, self-host the fonts or use the fallbacks.
+
 ## Project structure
 
 - `src/App.jsx` — route and session composition

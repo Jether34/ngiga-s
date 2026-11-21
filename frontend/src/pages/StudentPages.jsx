@@ -172,6 +172,7 @@ export function StudentHome({
             <button
               key={item}
               className={`chip ${item === category ? "selected" : ""}`}
+              aria-pressed={item === category}
               onClick={() => setCategory(item)}
             >
               {item}

@@ -28,6 +28,7 @@ import { IconButton, Field, Modal, ProductArt } from "../components/ui";
 import { schoolEmail } from "../utils/domain";
 
 const publicLinks = [
+  { label: "Home", path: "/" },
   { label: "About Us", path: "/about" },
   { label: "Contact Us", path: "/contact" },
   { label: "Our Goal", path: "/goal" },
@@ -84,7 +85,7 @@ export function PublicHeader({ navigate, current = "/" }) {
       <div className="public-actions">
         <button className="text-button" onClick={() => navigate("/login")}>Log in</button>
         <button className="button small" onClick={() => navigate("/signup")}>
-          Get started <ArrowRight size={16} />
+          Sign up <ArrowRight size={16} />
         </button>
       </div>
     </header>
@@ -99,9 +100,7 @@ export function PublicFooter() {
   );
 }
 
-export function Welcome({ navigate }) {
-  const [selectedVisual, setSelectedVisual] = useState(null);
-  const visualRef = useRef(null);
+function LandingHeadline() {
   const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -130,6 +129,30 @@ export function Welcome({ navigate }) {
     const timer = window.setInterval(tick, headlineStepMs);
     return () => window.clearInterval(timer);
   }, [reducedMotion]);
+
+  return (
+    <h1 className={`welcome-headline${!reducedMotion && headline.fading ? " is-fading" : ""}`} aria-label={headlineLines.join(" ")}>
+      <span className="headline-line" aria-hidden="true">
+        <span className="headline-reserve">{headlineLines[0]}</span>
+        <span className="headline-typed">
+          {headlineLines[0].slice(0, reducedMotion ? headlineLines[0].length : headline.firstCount)}
+          {!reducedMotion && headline.cursorLine === 0 && <span className="headline-cursor" />}
+        </span>
+      </span>
+      <span className="headline-line" aria-hidden="true">
+        <em className="headline-reserve">{headlineLines[1]}</em>
+        <em className="headline-typed">
+          {headlineLines[1].slice(0, reducedMotion ? headlineLines[1].length : headline.secondCount)}
+          {!reducedMotion && headline.cursorLine === 1 && <span className="headline-cursor" />}
+        </em>
+      </span>
+    </h1>
+  );
+}
+
+export function Welcome({ navigate }) {
+  const [selectedVisual, setSelectedVisual] = useState(null);
+  const visualRef = useRef(null);
   const selectVisualOnKey = (event, card) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -161,22 +184,7 @@ export function Welcome({ navigate }) {
           <div className="pill">
             <Sparkles size={15} /> A simpler way to borrow on campus
           </div>
-          <h1 className={`welcome-headline${!reducedMotion && headline.fading ? " is-fading" : ""}`} aria-label={headlineLines.join(" ")}>
-            <span className="headline-line" aria-hidden="true">
-              <span className="headline-reserve">{headlineLines[0]}</span>
-              <span className="headline-typed">
-                {headlineLines[0].slice(0, reducedMotion ? headlineLines[0].length : headline.firstCount)}
-                {!reducedMotion && headline.cursorLine === 0 && <span className="headline-cursor" />}
-              </span>
-            </span>
-            <span className="headline-line" aria-hidden="true">
-              <em className="headline-reserve">{headlineLines[1]}</em>
-              <em className="headline-typed">
-                {headlineLines[1].slice(0, reducedMotion ? headlineLines[1].length : headline.secondCount)}
-                {!reducedMotion && headline.cursorLine === 1 && <span className="headline-cursor" />}
-              </em>
-            </span>
-          </h1>
+          <LandingHeadline />
           <p>
             Find the right equipment, scan its code, and review your loan in a
             few clear steps. Built for every project you have in mind.

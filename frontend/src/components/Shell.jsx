@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   LogOut,
@@ -24,6 +24,8 @@ export function Shell({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationRef = useRef(null);
+  const notificationButtonRef = useRef(null);
   const links = role === "ADMIN" ? adminLinks : studentLinks;
   const prefix = role === "ADMIN" ? "/admin" : "/student";
   const current = route.split("/")[2] || "home";
@@ -37,6 +39,24 @@ export function Shell({
           "A borrowed item is overdue. Review your history.",
           "Your receipt is pending generation.",
         ];
+  useEffect(() => {
+    if (!notificationsOpen) return undefined;
+    const closeOutside = (event) => {
+      if (!notificationRef.current?.contains(event.target)) setNotificationsOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setNotificationsOpen(false);
+        notificationButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [notificationsOpen]);
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
@@ -136,15 +156,18 @@ export function Shell({
           </div>
           <div className="topbar-right">
             <Badge tone="warning">Demo data</Badge>
-            <div className="notification-wrap">
+            <div className="notification-wrap" ref={notificationRef}>
               <IconButton
                 icon={Bell}
                 label="Notifications"
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
+                buttonRef={notificationButtonRef}
+                aria-expanded={notificationsOpen}
+                aria-controls="notifications-panel"
               />
               <span className="notification-dot" />
               {notificationsOpen && (
-                <div className="notification-popover">
+                <div className="notification-popover" id="notifications-panel">
                   <div className="popover-head">
                     <strong>Notifications</strong>
                     <IconButton

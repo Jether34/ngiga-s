@@ -84,6 +84,11 @@ function App() {
     window.clearTimeout(exitTimer.current);
     window.clearTimeout(enterTimer.current);
     pendingRoute.current = path;
+    if (path === routeRef.current) {
+      pendingRoute.current = null;
+      setRoutePhase("idle");
+      return;
+    }
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       routeRef.current = path;
       pendingRoute.current = null;

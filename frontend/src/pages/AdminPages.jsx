@@ -487,6 +487,7 @@ export function AdminProducts({
         </select>
         <button
           className={`button secondary ${showLow ? "active-filter" : ""}`}
+          aria-pressed={showLow}
           onClick={() => setShowLow(!showLow)}
         >
           <Filter size={16} /> Low stock
@@ -1336,8 +1337,24 @@ export function AdminScan({ products, units, loans, notify }) {
             role="tab"
             aria-selected={mode === name}
             aria-controls="scan-mode-panel"
+            tabIndex={mode === name ? 0 : -1}
             className={mode === name ? "active" : ""}
             onClick={() => setMode(name)}
+            onKeyDown={(event) => {
+              const tabs = [...event.currentTarget.parentElement.querySelectorAll('[role="tab"]')];
+              const index = tabs.indexOf(event.currentTarget);
+              const nextIndex = event.key === "ArrowRight"
+                ? (index + 1) % tabs.length
+                : event.key === "ArrowLeft"
+                  ? (index - 1 + tabs.length) % tabs.length
+                  : event.key === "Home"
+                    ? 0
+                    : event.key === "End" ? tabs.length - 1 : -1;
+              if (nextIndex < 0) return;
+              event.preventDefault();
+              tabs[nextIndex].focus();
+              setMode(["Receive", "Issue", "Return"][nextIndex]);
+            }}
           >
             <Icon size={18} />{" "}
             {name === "Receive"

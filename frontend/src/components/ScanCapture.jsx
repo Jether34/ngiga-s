@@ -16,12 +16,14 @@ export function ScanCapture({
   const stop = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     detectorRef.current = null;
     setCameraState("idle");
   };
   useEffect(
     () => () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
     },
     [],
   );
@@ -48,6 +50,9 @@ export function ScanCapture({
         setCameraState("scanning");
       } else setCameraState("preview");
     } catch (error) {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
       setCameraState(
         error.name === "NotAllowedError" ? "denied" : "unavailable",
       );
@@ -56,10 +61,13 @@ export function ScanCapture({
   useEffect(() => {
     if (cameraState !== "scanning") return;
     let canceled = false;
+    let detecting = false;
     const timer = setInterval(async () => {
-      if (!videoRef.current || !detectorRef.current || canceled) return;
+      if (!videoRef.current || !detectorRef.current || canceled || detecting) return;
+      detecting = true;
       try {
         const found = await detectorRef.current.detect(videoRef.current);
+        if (canceled) return;
         if (found[0]?.rawValue) {
           canceled = true;
           setCode(found[0].rawValue);
@@ -68,6 +76,8 @@ export function ScanCapture({
         }
       } catch {
         /* keep manual entry available */
+      } finally {
+        detecting = false;
       }
     }, 500);
     return () => {
