@@ -7,9 +7,9 @@ import {
   Menu,
   Boxes,
 } from "lucide-react";
-import { SCHOOL_NAME } from "../data/fixtures";
+import { SCHOOL_NAME, receipts } from "../data/fixtures";
 import { Badge, IconButton } from "../components/ui";
-import { studentLinks, adminLinks } from "../utils/domain";
+import { studentLinks, adminLinks, isOverdue } from "../utils/domain";
 import { HelpCarousel } from "./HelpCarousel";
 
 export function Shell({
@@ -21,6 +21,8 @@ export function Shell({
   logout,
   children,
   notify,
+  products,
+  loans,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -28,17 +30,40 @@ export function Shell({
   const notificationButtonRef = useRef(null);
   const links = role === "ADMIN" ? adminLinks : studentLinks;
   const prefix = role === "ADMIN" ? "/admin" : "/student";
-  const current = route.split("/")[2] || "home";
+  const current = route.split("?")[0].split("/")[2] || "home";
+  const overdue = loans.filter(isOverdue);
+  const lowStockCount = products.filter((item) => !item.archived && item.availableUnits <= item.minimumStockLevel).length;
+  const studentOverdueCount = overdue.filter((loan) => loan.studentId === session.id).length;
+  const pendingReceiptCount = receipts.filter((receipt) =>
+    receipt.renderStatus === "PENDING" && loans.some((loan) => loan.id === receipt.loanId && loan.studentId === session.id)
+  ).length;
   const notices =
     role === "ADMIN"
       ? [
-          "3 product types are at or below minimum stock.",
-          "Two active loans are overdue.",
+          {
+            count: lowStockCount,
+            text: `${lowStockCount} product type${lowStockCount === 1 ? " is" : "s are"} at or below minimum stock.`,
+            href: "/admin/products?lowStock=1",
+          },
+          {
+            count: overdue.length,
+            text: `${overdue.length} active loan${overdue.length === 1 ? " is" : "s are"} overdue.`,
+            href: "/admin/history?status=Overdue",
+          },
         ]
       : [
-          "A borrowed item is overdue. Review your history.",
-          "Your receipt is pending generation.",
+          {
+            count: studentOverdueCount,
+            text: `${studentOverdueCount} borrowed item${studentOverdueCount === 1 ? " is" : "s are"} overdue. Review your history.`,
+            href: "/student/history?filter=Overdue",
+          },
+          {
+            count: pendingReceiptCount,
+            text: `${pendingReceiptCount} receipt${pendingReceiptCount === 1 ? " is" : "s are"} pending generation.`,
+            href: "/student/history?receipt=pending",
+          },
         ];
+  const activeNotices = notices.filter((notice) => notice.count > 0);
   useEffect(() => {
     if (!notificationsOpen) return undefined;
     const closeOutside = (event) => {
@@ -158,7 +183,7 @@ export function Shell({
                 aria-expanded={notificationsOpen}
                 aria-controls="notifications-panel"
               />
-              <span className="notification-dot" />
+              {activeNotices.length > 0 && <span className="notification-dot" />}
               {notificationsOpen && (
                 <div className="notification-popover" id="notifications-panel">
                   <div className="popover-head">
@@ -169,12 +194,22 @@ export function Shell({
                       onClick={() => setNotificationsOpen(false)}
                     />
                   </div>
-                  {notices.map((text) => (
-                    <div className="notification-item" key={text}>
-                      <span className="notice-dot" />
-                      {text}
-                    </div>
+                  {activeNotices.map(({ text, href }) => (
+                    <button
+                      type="button"
+                      className="notification-item"
+                      key={href}
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        navigate(href);
+                      }}
+                    >
+                      <span className="notice-dot" aria-hidden="true" />
+                      <span className="notification-text">{text}</span>
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
                   ))}
+                  {activeNotices.length === 0 && <p className="notification-empty">No demo alerts right now.</p>}
                   <small>Demo alerts based on fixture data</small>
                 </div>
               )}

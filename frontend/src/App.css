@@ -78,6 +78,7 @@
   --shadow: 0 14px 38px rgba(0, 0, 0, 0.24);
 }
 html, body { background: var(--cream); color: var(--ink); }
+.route-loading { min-height: 60vh; display: grid; place-items: center; }
 body, .app-shell, .topbar, .panel, .stat-card, .product-card, .auth-page, .auth-aside, .auth-panel, .modal, input, select, textarea { transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease; }
 html { scrollbar-width: none; }
 html::-webkit-scrollbar { display: none; }
@@ -1630,10 +1631,36 @@ select:disabled {
   display: flex;
   align-items: flex-start;
   gap: 9px;
+  width: 100%;
   padding: 12px 2px;
+  background: transparent;
+  border: 0;
   border-bottom: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
   font-size: 0.76rem;
   line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+.notification-item:hover,
+.notification-item:focus-visible {
+  background: var(--surface-beige);
+}
+.notification-item:focus-visible {
+  outline: 2px solid var(--emerald);
+  outline-offset: 2px;
+}
+.notification-text {
+  flex: 1;
+}
+.notification-empty { margin: 14px 0 8px; color: var(--muted); font-size: 0.8rem; }
+.notification-item > svg {
+  flex: none;
+  align-self: center;
+  color: var(--muted);
 }
 .notice-dot {
   height: 7px;
@@ -2560,11 +2587,24 @@ select:disabled {
   margin-top: 3px;
 }
 .click-row {
-  cursor: pointer;
+  transition: background-color var(--motion-fast) ease;
 }
 .click-row:hover {
   background: var(--cream);
 }
+.table-row-link {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.table-row-link:hover { color: var(--emerald-dark); }
+.table-row-link:focus-visible { outline: 2px solid var(--emerald); outline-offset: 3px; border-radius: 3px; }
 .table-product,
 .table-user {
   display: flex;

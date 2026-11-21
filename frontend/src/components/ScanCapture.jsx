@@ -13,7 +13,9 @@ export function ScanCapture({
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const detectorRef = useRef(null);
+  const requestRef = useRef(0);
   const stop = () => {
+    requestRef.current += 1;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -22,27 +24,35 @@ export function ScanCapture({
   };
   useEffect(
     () => () => {
+      requestRef.current += 1;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       if (videoRef.current) videoRef.current.srcObject = null;
     },
     [],
   );
   const start = async () => {
+    if (cameraState === "requesting" || cameraState === "scanning" || cameraState === "preview") return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState("unavailable");
       return;
     }
+    const request = ++requestRef.current;
     setCameraState("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
+      if (request !== requestRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      if (request !== requestRef.current) return;
       if ("BarcodeDetector" in window) {
         detectorRef.current = new window.BarcodeDetector({
           formats: ["qr_code", "code_128", "code_39", "ean_13"],
@@ -50,6 +60,7 @@ export function ScanCapture({
         setCameraState("scanning");
       } else setCameraState("preview");
     } catch (error) {
+      if (request !== requestRef.current) return;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;

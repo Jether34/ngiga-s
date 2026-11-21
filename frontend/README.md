@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open the local address printed by Vite, normally `http://localhost:5173`. For a production build, run `npm run build` and `npm run preview`. Run `npm run lint` for static checks.
+Open the local address printed by Vite, normally `http://localhost:5173`. For a production build, run `npm run build` and `npm run preview`. Run `npm run lint` for static checks and `npm test` for service and validation regression checks.
 
 ## Demo access
 

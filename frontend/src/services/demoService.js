@@ -37,7 +37,8 @@ export const demoService = {
   },
   async signUp(payload) {
     await pause();
-    return result({ ...payload, id: "demo-new", role: "STUDENT" });
+    const { fullName, studentId, schoolEmail, yearLevel, program, address } = payload;
+    return result({ fullName, studentId, schoolEmail, yearLevel, program, address, id: "demo-new", role: "STUDENT" });
   },
   async logOut() {
     await pause();

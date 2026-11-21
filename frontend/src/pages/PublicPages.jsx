@@ -405,38 +405,47 @@ export function Auth({ mode, navigate, setSession, notify }) {
     event.preventDefault();
     if (!validate() || busy) return;
     setBusy(true);
-    const response = signup
-      ? await demoService.signUp(form)
-      : await demoService.logIn(form.schoolEmail, form.password);
-    setBusy(false);
-    if (!response.ok) {
-      setAuthError(response.error.message);
-      return;
+    try {
+      const response = signup
+        ? await demoService.signUp(form)
+        : await demoService.logIn(form.schoolEmail, form.password);
+      if (!response.ok) {
+        setAuthError(response.error?.message || "Could not complete this request.");
+        return;
+      }
+      if (signup) {
+        setSuccess(true);
+        return;
+      }
+      setSession(response.data);
+      notify(`Welcome back, ${response.data.fullName.split(" ")[0]}. Demo session is active.`);
+      navigate(response.data.role === "ADMIN" ? "/admin/home" : "/student/home");
+    } catch {
+      setAuthError("Could not reach the account service. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    if (signup) {
-      setSuccess(true);
-      return;
-    }
-    setSession(response.data);
-    notify(
-      `Welcome back, ${response.data.fullName.split(" ")[0]}. Demo session is active.`,
-    );
-    navigate(response.data.role === "ADMIN" ? "/admin/home" : "/student/home");
   };
   const demoLogin = async (role) => {
+    if (busy) return;
     setBusy(true);
     const email =
       role === "ADMIN"
         ? "morgan.reyes@university.edu"
         : "alex.rivera@university.edu";
-    const response = await demoService.logIn(email, "Demo123!");
-    setBusy(false);
-    if (response.ok) {
+    try {
+      const response = await demoService.logIn(email, "Demo123!");
+      if (!response.ok) {
+        setAuthError(response.error?.message || "Could not open the demo session.");
+        return;
+      }
       setSession(response.data);
       navigate(role === "ADMIN" ? "/admin/home" : "/student/home");
-      notify(
-        `${role === "ADMIN" ? "Administrator" : "Student"} demo session opened.`,
-      );
+      notify(`${role === "ADMIN" ? "Administrator" : "Student"} demo session opened.`);
+    } catch {
+      setAuthError("Could not open the demo session. Please try again.");
+    } finally {
+      setBusy(false);
     }
   };
   const passwordField = (

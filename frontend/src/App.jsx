@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Component, Suspense, lazy, useState, useEffect, useCallback, useRef } from "react";
 import { Search, ArrowRight } from "lucide-react";
 import {
   loans as fixtureLoans,
@@ -8,25 +8,37 @@ import {
 } from "./data/fixtures";
 import { demoService } from "./services/demoService";
 import { readAvatar, readTheme, saveAvatar, saveTheme } from "./utils/preferences";
-import { Notice } from "./components/ui";
+import { Loading, Notice } from "./components/ui";
 
 import { Welcome, Auth } from "./pages/PublicPages";
 import { AboutPage, ContactPage, GoalPage } from "./pages/PublicInfoPages";
 import { Shell } from "./components/Shell";
-import {
-  StudentHome,
-  StudentScan,
-  StudentHistory,
-  SettingsPage,
-} from "./pages/StudentPages";
-import {
-  AdminHome,
-  AdminProducts,
-  AdminScan,
-  AdminHistory,
-  AdminUsers,
-} from "./pages/AdminPages";
+const loadStudentPages = () => import("./pages/StudentPages");
+const loadAdminPages = () => import("./pages/AdminPages");
+const lazyNamed = (load, name) => lazy(() => load().then((module) => ({ default: module[name] })));
+const StudentHome = lazyNamed(loadStudentPages, "StudentHome");
+const StudentScan = lazyNamed(loadStudentPages, "StudentScan");
+const StudentHistory = lazyNamed(loadStudentPages, "StudentHistory");
+const SettingsPage = lazyNamed(loadStudentPages, "SettingsPage");
+const AdminHome = lazyNamed(loadAdminPages, "AdminHome");
+const AdminProducts = lazyNamed(loadAdminPages, "AdminProducts");
+const AdminScan = lazyNamed(loadAdminPages, "AdminScan");
+const AdminHistory = lazyNamed(loadAdminPages, "AdminHistory");
+const AdminUsers = lazyNamed(loadAdminPages, "AdminUsers");
 import "./App.css";
+
+const currentLocation = () => window.location.pathname + window.location.search;
+
+function readDemoSession() {
+  try {
+    const user = JSON.parse(sessionStorage.getItem("equip-demo-session"));
+    return user && ["STUDENT", "ADMIN"].includes(user.role) &&
+      typeof user.id === "string" && typeof user.fullName === "string" &&
+      typeof user.schoolEmail === "string" ? user : null;
+  } catch {
+    return null;
+  }
+}
 
 function NotFound({ navigate, session }) {
   return (
@@ -55,31 +67,42 @@ function NotFound({ navigate, session }) {
   );
 }
 
+class PageErrorBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error, details) {
+    console.error("Page rendering failed", error, details);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <main className="not-found" role="alert">
+        <span className="eyebrow">PAGE ERROR</span>
+        <h1>Something went wrong.</h1>
+        <p>Reload the page to return to the equipment workspace.</p>
+        <button className="button" onClick={() => window.location.reload()}>Reload page</button>
+      </main>
+    );
+  }
+}
+
 function App() {
   const [theme, setTheme] = useState(readTheme);
-  const [route, setRoute] = useState(window.location.pathname);
+  const [route, setRoute] = useState(currentLocation);
   const [routePhase, setRoutePhase] = useState("idle");
-  const routeRef = useRef(window.location.pathname);
+  const routeRef = useRef(currentLocation());
   const pendingRoute = useRef(null);
   const exitTimer = useRef(null);
   const enterTimer = useRef(null);
   const toastTimer = useRef(null);
   const toastExitTimer = useRef(null);
-  const [session, setSessionState] = useState(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem("equip-demo-session"));
-    } catch {
-      return null;
-    }
-  });
-  const [avatar, setAvatar] = useState(() => {
-    try {
-      const user = JSON.parse(sessionStorage.getItem("equip-demo-session"));
-      return readAvatar(user?.schoolEmail);
-    } catch {
-      return "";
-    }
-  });
+  const [session, setSessionState] = useState(readDemoSession);
+  const [avatar, setAvatar] = useState(() => readAvatar(readDemoSession()?.schoolEmail));
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
@@ -136,7 +159,7 @@ function App() {
     }, 170);
   }, []);
   const navigate = (path) => {
-    if (path === window.location.pathname) return;
+    if (path === currentLocation()) return;
     window.history.pushState({}, "", path);
     transitionTo(path);
   };
@@ -158,14 +181,23 @@ function App() {
   const setSession = (user) => {
     setSessionState(user);
     setAvatar(readAvatar(user?.schoolEmail));
-    sessionStorage.setItem("equip-demo-session", JSON.stringify(user));
+    try {
+      sessionStorage.setItem("equip-demo-session", JSON.stringify(user));
+    } catch {
+      notify("Demo session is active, but browser storage is unavailable.", "error");
+    }
   };
   const logout = async () => {
-    await demoService.logOut();
-    setSessionState(null);
-    setAvatar("");
-    sessionStorage.removeItem("equip-demo-session");
-    navigate("/");
+    try {
+      await demoService.logOut();
+    } catch {
+      // A failed network sign-out must not leave a demo session open locally.
+    } finally {
+      setSessionState(null);
+      setAvatar("");
+      try { sessionStorage.removeItem("equip-demo-session"); } catch { /* storage may be disabled */ }
+      navigate("/");
+    }
   };
   const refresh = async () => {
     setLoading(true);
@@ -194,7 +226,7 @@ function App() {
     }
   };
   useEffect(() => {
-    const onPop = () => transitionTo(window.location.pathname);
+    const onPop = () => transitionTo(currentLocation());
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
@@ -204,23 +236,24 @@ function App() {
       window.clearTimeout(toastExitTimer.current);
     };
   }, [transitionTo]);
-  const page = route.split("/")[2];
+  const pathname = route.split("?")[0];
+  const page = pathname.split("/")[2];
   let content;
-  if (route === "/") content = <Welcome navigate={navigate} />;
-  else if (route === "/about") content = <AboutPage navigate={navigate} />;
-  else if (route === "/contact") content = <ContactPage navigate={navigate} />;
-  else if (route === "/goal") content = <GoalPage navigate={navigate} />;
-  else if (route === "/login" || route === "/signup")
+  if (pathname === "/") content = <Welcome navigate={navigate} />;
+  else if (pathname === "/about") content = <AboutPage navigate={navigate} />;
+  else if (pathname === "/contact") content = <ContactPage navigate={navigate} />;
+  else if (pathname === "/goal") content = <GoalPage navigate={navigate} />;
+  else if (pathname === "/login" || pathname === "/signup")
     content = (
       <Auth
         key={route}
-        mode={route.slice(1)}
+        mode={pathname.slice(1)}
         navigate={navigate}
         setSession={setSession}
         notify={notify}
       />
     );
-  else if (route.startsWith("/student/")) {
+  else if (pathname.startsWith("/student/")) {
     if (!session || session.role !== "STUDENT")
       content = <NotFound navigate={navigate} session={session} />;
     else {
@@ -239,7 +272,7 @@ function App() {
       else if (page === "scan")
         child = <StudentScan session={session} {...data} notify={notify} />;
       else if (page === "history")
-        child = <StudentHistory session={session} {...data} />;
+        child = <StudentHistory key={route} session={session} {...data} />;
       else if (page === "settings")
         child = (
           <SettingsPage
@@ -263,12 +296,14 @@ function App() {
           navigate={navigate}
           logout={logout}
           notify={notify}
+          products={data.products}
+          loans={data.loans}
         >
           {child}
         </Shell>
       );
     }
-  } else if (route.startsWith("/admin/")) {
+  } else if (pathname.startsWith("/admin/")) {
     if (!session || session.role !== "ADMIN")
       content = <NotFound navigate={navigate} session={session} />;
     else {
@@ -280,11 +315,13 @@ function App() {
             navigate={navigate}
             refresh={refresh}
             loading={loading}
+            dataError={dataError}
           />
         );
       else if (page === "products")
         child = (
           <AdminProducts
+            key={route}
             products={data.products}
             setProducts={(products) =>
               setData((old) => ({
@@ -301,7 +338,7 @@ function App() {
           />
         );
       else if (page === "scan") child = <AdminScan {...data} notify={notify} />;
-      else if (page === "history") child = <AdminHistory {...data} />;
+      else if (page === "history") child = <AdminHistory key={route} {...data} />;
       else if (page === "users")
         child = <AdminUsers {...data} notify={notify} />;
       else if (page === "settings")
@@ -327,6 +364,8 @@ function App() {
           navigate={navigate}
           logout={logout}
           notify={notify}
+          products={data.products}
+          loans={data.loans}
         >
           {child}
         </Shell>
@@ -336,7 +375,9 @@ function App() {
   return (
     <>
       <div className="route-frame" data-phase={routePhase}>
-        {content}
+        <PageErrorBoundary key={route}>
+          <Suspense fallback={<div className="route-loading"><Loading /></div>}>{content}</Suspense>
+        </PageErrorBoundary>
       </div>
       <Notice message={toast} onClose={dismissNotice} />
     </>

@@ -23,7 +23,7 @@ Reviewed against the Frontend SRS v1.1 (20 November 2026) and the later forest-g
 
 ## Verification performed
 
-- `npm run lint` and `npm run build` completed successfully.
+- `npm run lint`, `npm test`, and `npm run build` completed successfully. The four regression tests cover school email validation, unit lookup, sign-up preview data handling, and fixture inventory/loan consistency.
 - Production preview returned the app for `/about` on direct request. A deployed static host still needs a client-route rewrite.
 - Browser smoke checks covered public navigation and Back/Forward; student and administrator route menus; sign-up agreement and policy modal; contact validation; student search, modal, and borrow flow; receive duplicate/progress; issue and return previews; notification Escape behavior; and scan-tab arrow keys.
 - The 10-second landing headline cycle and reduced-motion static headline were checked after the component was isolated to avoid rerendering the full hero on each character.
@@ -35,6 +35,14 @@ Reviewed against the Frontend SRS v1.1 (20 November 2026) and the later forest-g
 2. Enforce roles, student record scope, unique codes/serials, inventory consistency, and atomic issue/return operations on the server.
 3. Supply approved Terms of Use, Privacy Policy, school branding/domains, real contact details, and institution loan policy.
 4. Configure HTTPS for camera access and an SPA route fallback on the host; test camera permissions on target devices.
-5. Add persistent automated browser tests against the real service adapter before production deployment. The current repository has lint and build scripts but no dedicated test runner.
+5. Add persistent automated browser tests against the real service adapter before production deployment. The current regression tests cover service and validation logic; they do not replace end-to-end tests.
+
+## Finalization pass
+
+- Hardened demo session parsing, account form failures, product and unit validation, scanning cleanup, and administrator/student preview error states.
+- Replaced non-keyboard table row actions with focusable buttons and added a page error fallback.
+- Split student and administrator routes into on-demand bundles. The landing bundle is smaller while role pages retain the same routes and controls.
+- Rechecked light and dark appearance, administrator navigation, product dialog opening and Escape dismissal in the local preview. A narrow-screen live check was interrupted by concurrent computer input; the existing responsive audit above remains the recorded viewport coverage.
+- `npm audit --audit-level=high` reported zero known vulnerabilities at the time of this pass. This is a dependency advisory check, not a security certification.
 
 The frontend is suitable for review and backend integration. It is not a production borrowing service until these integrations and institutional details are supplied.
