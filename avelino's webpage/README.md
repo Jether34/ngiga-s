@@ -12,6 +12,25 @@ npm run dev
 
 Open the local address printed by Vite, normally `http://localhost:5173`. For a production build, run `npm run build` and `npm run preview`. Run `npm run lint` for static checks.
 
+## Cloudflare deployment
+
+This is a Vite application. Deploy the **built `dist` directory**, not the source folder. The source `index.html` references `/src/main.jsx`, which a browser cannot run directly. The Worker configuration in `wrangler.jsonc` serves `./dist` and falls back to `index.html` for application routes.
+
+For the `Jether` branch of `ngiga-s`, set these Cloudflare **Workers Builds** settings:
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `Jether` |
+| Root directory | `avelino's webpage` |
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
+
+Cloudflare must install the npm dependencies before the build. From a local checkout, the equivalent commands are `npm ci`, `npm run build`, then `npx wrangler deploy`, all run inside `avelino's webpage`.
+
+If deploying the original `Avelino` branch instead, its root directory is `frontend`. Copy the same `wrangler.jsonc` into that directory before using Workers Builds. For **Cloudflare Pages** rather than Workers, use the same branch and root directory, build command `npm run build`, and build output directory `dist`.
+
+If uploading files manually in the Cloudflare dashboard, select the contents of `dist` after building. Uploading the project source creates a blank page because the JSX and CSS have not been bundled.
+
 ## Demo access
 
 The Log In page has **Student demo** and **Admin demo** buttons. These create an explicitly labeled in-browser demo session. Sample school accounts also accept the password `Demo123!`.
