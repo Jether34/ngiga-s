@@ -25,12 +25,17 @@ flutter pub get
 flutter run -d emulator-5554 --dart-define=API_URL=http://10.0.2.2:8000
 ```
 
-The emulator reaches the PC through `10.0.2.2`. The admin account is seeded
-from `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`, and `ADMIN_ID` when the
-MySQL database has no administrator. Public sign-up always creates a STUDENT,
-generates its student/user ID on the server, and saves phone, year level,
-program, home address, and accepted-terms time. Existing MySQL databases get the
-additional profile columns when the C++ API starts.
+The emulator reaches the PC through `10.0.2.2`. Set `SMTP_USERNAME` and
+`SMTP_PASSWORD` in the private server environment before student sign-up.
+The admin account is seeded from `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`,
+and `ADMIN_ID` when the MySQL database has no administrator. Public sign-up
+creates a STUDENT and sends a six-digit code to the supplied email, including
+when a phone number is used. A verified student gets another email challenge
+when signing in from a new IP. Codes expire after 10 minutes and allow five
+attempts. Existing MySQL databases get the additional columns when the C++ API
+starts. Android schedules a reminder before a loan is due and repeats overdue
+reminders every three hours until the app learns that the item was returned;
+the silent setting controls their sound.
 
 ## API and data
 
@@ -44,9 +49,9 @@ admin WebSocket clients.
 
 The C++ API includes:
 
-- `POST /auth/signup`, `POST /auth/login`, `GET /me`
+- `POST /auth/signup`, `POST /auth/login`, `POST /auth/verify`, `GET /me`
 - `GET /equipment`, `GET /equipment/{id}`, `GET /units/{barcode}`
-- `POST/PATCH/DELETE /equipment`, `POST /equipment/{id}/units`, `PATCH /units/{id}/status`
+- `POST/PATCH/DELETE /equipment`, `PATCH /equipment/{id}/photo`, `POST /equipment/{id}/units`, `PATCH /units/{id}/status`
 - `POST /loans`, `POST /returns/{barcode}`, `GET /receipts`
 - `GET /transactions`, `GET /reports/low-stock`, `WS /events?token=...`
 - `GET /health`

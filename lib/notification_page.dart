@@ -67,54 +67,60 @@ class _NotificationPageState extends State<NotificationPage> {
   Future<void> _openNotice(Map<String, dynamic> item) async {
     await read(item);
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    await showDialog<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: AppPalette.mist,
-                child: Icon(
-                  _iconFor('${item['type']}'),
-                  color: AppPalette.primary,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppPalette.mist,
+                  child: Icon(
+                    _iconFor('${item['type']}'),
+                    color: AppPalette.primary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                '${item['title'] ?? 'Notification'}',
-                style: const TextStyle(
-                  color: AppPalette.deep,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(height: 18),
+                Text(
+                  '${item['title'] ?? 'Notification'}',
+                  style: const TextStyle(
+                    color: AppPalette.deep,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '${item['message'] ?? ''}',
-                style: const TextStyle(
-                  color: AppPalette.ink,
-                  fontSize: 15,
-                  height: 1.5,
+                const SizedBox(height: 12),
+                Text(
+                  '${item['message'] ?? ''}',
+                  style: const TextStyle(
+                    color: AppPalette.ink,
+                    fontSize: 15,
+                    height: 1.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '${item['created_at'] ?? ''}',
-                style: const TextStyle(color: AppPalette.muted, fontSize: 12),
-              ),
-            ],
+                const SizedBox(height: 18),
+                Text(
+                  '${item['created_at'] ?? ''}',
+                  style: const TextStyle(color: AppPalette.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -156,7 +162,7 @@ class _NotificationPageState extends State<NotificationPage> {
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
-                        vertical: 8,
+                        vertical: 2,
                       ),
                       leading: Icon(
                         _iconFor('${notice['type']}'),

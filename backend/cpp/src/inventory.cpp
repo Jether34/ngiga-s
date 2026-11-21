@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <future>
+#include <regex>
 
 namespace stockroom {
 namespace {
@@ -20,11 +21,12 @@ Json::Value asInventory(const drogon::orm::Row &row) {
     item["issued"] = row["issued"].as<int>();
     item["maintenance"] = row["maintenance"].as<int>();
     item["borrow_count"] = row["borrow_count"].as<int>();
+    item["image"] = row["image_data"].isNull() ? "" : row["image_data"].as<std::string>();
     return item;
 }
 
 const std::string inventorySql =
-    "SELECT e.id,e.name,e.category,e.min_stock,COUNT(u.id) AS total,"
+    "SELECT e.id,e.name,e.category,e.min_stock,e.image_data,COUNT(u.id) AS total,"
     "COALESCE(SUM(u.status='AVAILABLE'),0) AS available,"
     "COALESCE(SUM(u.status='ISSUED'),0) AS issued,"
     "COALESCE(SUM(u.status='MAINTENANCE'),0) AS maintenance,"
@@ -138,6 +140,26 @@ void registerInventoryRoutes() {
             } catch (...) { callback(error(k500InternalServerError, "Unable to load product")); }
         },
         {Get});
+
+    app().registerHandler(
+        "/equipment/{1}/photo",
+        [](const HttpRequestPtr &request, Callback &&callback, const std::string &id) {
+            Json::Value user;
+            if (!requireAdmin(request, callback, user)) return;
+            const auto body = request->getJsonObject();
+            const auto image = body ? value(*body, "image") : "";
+            if (image.size() > 1400000 ||
+                (!image.empty() && !std::regex_match(image, std::regex(R"([A-Za-z0-9+/]+={0,2})")))) {
+                callback(error(k422UnprocessableEntity, "Choose an image smaller than 1 MB")); return;
+            }
+            try {
+                auto db = app().getDbClient();
+                db->execSqlSync("UPDATE equipment SET image_data=? WHERE id=?", image, id);
+                Json::Value result;
+                result["saved"] = true;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to save product photo")); }
+        }, {Patch});
 
     app().registerHandler(
         "/equipment",

@@ -85,6 +85,7 @@ void startOutboxPump() {
             {"avatar_data", "avatar_data MEDIUMTEXT NULL"},
             {"terms_accepted_at", "terms_accepted_at DATETIME(6) NULL"},
             {"deleted_at", "deleted_at DATETIME(6) NULL"},
+            {"email_verified_at", "email_verified_at DATETIME(6) NULL"},
         };
         for (const auto &[name, definition] : profileColumns) {
             auto exists = [&]() {
@@ -101,10 +102,23 @@ void startOutboxPump() {
                 }
             }
         }
+        const auto photoColumn = db->execSqlSync(
+            "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() "
+            "AND TABLE_NAME='equipment' AND COLUMN_NAME='image_data'");
+        if (photoColumn.empty()) db->execSqlSync("ALTER TABLE equipment ADD COLUMN image_data MEDIUMTEXT NULL");
         db->execSqlSync("CREATE TABLE IF NOT EXISTS notification_reads ("
             "user_id VARCHAR(36) NOT NULL,notification_id VARCHAR(64) NOT NULL,"
             "read_at DATETIME(6) NOT NULL,PRIMARY KEY(user_id,notification_id),"
             "CONSTRAINT fk_notification_reads_user FOREIGN KEY(user_id) REFERENCES users(id)) ENGINE=InnoDB");
+        db->execSqlSync("CREATE TABLE IF NOT EXISTS email_challenges ("
+            "id VARCHAR(36) PRIMARY KEY,user_id VARCHAR(36) NOT NULL,code_hash VARCHAR(255) NOT NULL,"
+            "ip VARCHAR(45) NOT NULL,created_at DATETIME(6) NOT NULL,expires_at DATETIME(6) NOT NULL,"
+            "consumed_at DATETIME(6) NULL,attempts INT NOT NULL DEFAULT 0,"
+            "CONSTRAINT fk_challenge_user FOREIGN KEY(user_id) REFERENCES users(id),"
+            "INDEX idx_challenge_user_time(user_id,created_at)) ENGINE=InnoDB");
+        db->execSqlSync("CREATE TABLE IF NOT EXISTS trusted_login_ips ("
+            "user_id VARCHAR(36) NOT NULL,ip VARCHAR(45) NOT NULL,verified_at DATETIME(6) NOT NULL,"
+            "PRIMARY KEY(user_id,ip),CONSTRAINT fk_trusted_ip_user FOREIGN KEY(user_id) REFERENCES users(id)) ENGINE=InnoDB");
         const auto admins = db->execSqlSync("SELECT id FROM users WHERE role='ADMIN' LIMIT 1");
         if (admins.empty()) {
             const auto *password = std::getenv("ADMIN_PASSWORD");

@@ -8,6 +8,11 @@ import android.content.pm.PackageManager
 import android.content.Intent
 import android.app.Activity
 import io.flutter.plugin.common.MethodCall
+import android.os.Build
+import android.content.ContentValues
+import android.provider.MediaStore
+import android.os.Environment
+import android.net.Uri
 
 class MainActivity : FlutterActivity() {
     private var pendingSave: MethodChannel.Result? = null
@@ -16,6 +21,19 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "stockroom/reminders")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "sync") {
+                    @Suppress("UNCHECKED_CAST")
+                    val loans = call.argument<List<Map<String, Any?>>>("loans") ?: emptyList()
+                    LoanReminders.sync(this, loans, call.argument<Boolean>("silent") ?: false)
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(
+                            android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 46072)
+                    }
+                    result.success(null)
+                } else result.notImplemented()
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "stockroom/files")
             .setMethodCallHandler { call: MethodCall, result: MethodChannel.Result ->
                 if (call.method != "saveFile") {
@@ -28,6 +46,28 @@ class MainActivity : FlutterActivity() {
                     val mimeType = call.argument<String>("mimeType")
                     if (bytes == null || fileName.isNullOrBlank() || mimeType.isNullOrBlank()) {
                         result.error("BAD_FILE", "Missing file details", null)
+                    } else if (mimeType == "image/png" && Build.VERSION.SDK_INT >= 29) {
+                        try {
+                            val values = ContentValues().apply {
+                                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                                put(MediaStore.Images.Media.RELATIVE_PATH,
+                                    Environment.DIRECTORY_PICTURES + "/NGIGA")
+                            }
+                            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                values) ?: throw IllegalStateException("Gallery is unavailable")
+                            try {
+                                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                                    ?: throw IllegalStateException("Could not write image")
+                            } catch (error: Exception) {
+                                contentResolver.delete(uri, null, null)
+                                throw error
+                            }
+                            result.success(true)
+                            openSaved(uri, "image/png")
+                        } catch (error: Exception) {
+                            result.error("SAVE_FAILED", error.message, null)
+                        }
                     } else {
                         pendingSave = result
                         pendingBytes = bytes
@@ -103,8 +143,21 @@ class MainActivity : FlutterActivity() {
                 stream.write(bytes ?: ByteArray(0))
             } ?: throw IllegalStateException("Could not open the selected file")
             result?.success(true)
+            openSaved(data.data!!, contentResolver.getType(data.data!!) ?: "application/pdf")
         } catch (error: Exception) {
             result?.error("SAVE_FAILED", error.message, null)
+        }
+    }
+
+    private fun openSaved(uri: Uri, mimeType: String) {
+        try {
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(view, "Open receipt with"))
+        } catch (_: Exception) {
+            // The file was saved even if no viewer is installed.
         }
     }
 }

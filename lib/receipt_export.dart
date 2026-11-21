@@ -57,7 +57,7 @@ abstract final class ReceiptExport {
     canvas.drawColor(Colors.white, BlendMode.src);
     const ink = Color(0xff17151d);
     const muted = Color(0xff6f6b76);
-    const accent = Color(0xff6c4cce);
+    const accent = Color(0xff145a43);
     final rule = Paint()
       ..color = const Color(0xffd9d5df)
       ..strokeWidth = 1.5;

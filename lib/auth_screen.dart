@@ -24,7 +24,7 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-enum _Page { welcome, login, signup }
+enum _Page { welcome, login, signup, verify }
 
 class _AuthScreenState extends State<AuthScreen> {
   _Page page = _Page.welcome;
@@ -36,6 +36,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final address = TextEditingController();
   final password = TextEditingController();
   final confirm = TextEditingController();
+  final verificationCode = TextEditingController();
+  String challengeId = '', verificationEmail = '';
   String? year, program, error;
   bool remember = false,
       terms = false,
@@ -48,7 +50,7 @@ class _AuthScreenState extends State<AuthScreen> {
     super.initState();
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
-        statusBarColor: Color(0xffd7c6f5),
+        statusBarColor: Color(0xffd7c7a1),
         statusBarIconBrightness: Brightness.dark,
         systemNavigationBarColor: Colors.white,
         systemNavigationBarIconBrightness: Brightness.dark,
@@ -73,6 +75,7 @@ class _AuthScreenState extends State<AuthScreen> {
       address,
       password,
       confirm,
+      verificationCode,
     ]) {
       controller.dispose();
     }
@@ -139,14 +142,20 @@ class _AuthScreenState extends State<AuthScreen> {
           'agree_terms': terms,
         });
         if (!mounted) return;
-        _open(_Page.login);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${result['message'] ?? 'Account created.'} Your ID is ${result['account_id'] ?? requestedId}.',
-            ),
-          ),
-        );
+        challengeId = '${result['challenge_id']}';
+        verificationEmail = '${result['email']}';
+        _open(_Page.verify);
+      } else if (page == _Page.verify) {
+        if (!RegExp(r'^\d{6}$').hasMatch(verificationCode.text.trim())) {
+          throw Exception('Enter the six-digit code from your email.');
+        }
+        final result = await api.post('/auth/verify', {
+          'challenge_id': challengeId,
+          'code': verificationCode.text.trim(),
+        });
+        api.token = result['token'];
+        api.user = Map<String, dynamic>.from(result['user']);
+        widget.onLogin(remember);
       } else {
         final result = await api.post('/auth/login', {
           'login_type': phoneTab ? 'phone' : 'email',
@@ -156,9 +165,15 @@ class _AuthScreenState extends State<AuthScreen> {
             'email': email.text.trim(),
           'password': password.text,
         });
-        api.token = result['token'];
-        api.user = Map<String, dynamic>.from(result['user']);
-        widget.onLogin(remember);
+        if (result['verification_required'] == true) {
+          challengeId = '${result['challenge_id']}';
+          verificationEmail = '${result['email']}';
+          _open(_Page.verify);
+        } else {
+          api.token = result['token'];
+          api.user = Map<String, dynamic>.from(result['user']);
+          widget.onLogin(remember);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -228,7 +243,7 @@ class _AuthScreenState extends State<AuthScreen> {
             ? null
             : const [
                 BoxShadow(
-                  color: Color(0x276c4cce),
+                  color: Color(0x27145a43),
                   blurRadius: 12,
                   offset: Offset(0, 5),
                 ),
@@ -822,6 +837,47 @@ class _AuthScreenState extends State<AuthScreen> {
     ),
   );
 
+  Widget _verify() => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 72, 24, 30),
+    child: Column(
+      children: [
+        const Icon(Icons.mark_email_read_outlined, size: 64, color: _accent),
+        const SizedBox(height: 24),
+        _heading(
+          'Check your email',
+          'Enter the six-digit code sent to\n$verificationEmail',
+        ),
+        const SizedBox(height: 32),
+        TextField(
+          controller: verificationCode,
+          autofocus: true,
+          maxLength: 6,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 25,
+            letterSpacing: 12,
+            fontWeight: FontWeight.bold,
+          ),
+          decoration: _decoration('000000', Icons.pin_outlined),
+        ),
+        const Text(
+          'The code expires in 10 minutes. Five attempts are allowed.',
+          style: TextStyle(color: _muted, fontSize: 12),
+        ),
+        if (error != null) _error(),
+        const SizedBox(height: 20),
+        _button(busy ? 'Verifying...' : 'Verify and continue', _submit),
+        const SizedBox(height: 18),
+        TextButton(
+          onPressed: () => _open(_Page.login),
+          child: const Text('Back to sign in'),
+        ),
+      ],
+    ),
+  );
+
   Widget _social(String label, Widget icon) => SizedBox(
     height: 44,
     child: OutlinedButton.icon(
@@ -841,7 +897,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
     value: const SystemUiOverlayStyle(
-      statusBarColor: Color(0xffd7c6f5),
+      statusBarColor: Color(0xffd7c7a1),
       statusBarIconBrightness: Brightness.dark,
     ),
     child: Scaffold(
@@ -863,6 +919,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           _Page.welcome => _welcome(),
                           _Page.login => _login(),
                           _Page.signup => _signup(),
+                          _Page.verify => _verify(),
                         },
                       ),
                     ),

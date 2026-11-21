@@ -44,7 +44,7 @@ class LandingArt extends StatelessWidget {
                 borderRadius: BorderRadius.circular(25),
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x3a6c4cce),
+                    color: Color(0x3a145a43),
                     blurRadius: 22,
                     offset: Offset(0, 11),
                   ),
@@ -164,7 +164,7 @@ class LandingArt extends StatelessWidget {
       borderRadius: BorderRadius.circular(13),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x156c4cce),
+          color: Color(0x15145a43),
           blurRadius: 10,
           offset: Offset(0, 5),
         ),

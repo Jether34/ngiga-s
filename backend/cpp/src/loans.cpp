@@ -1,9 +1,11 @@
 #include "api.hpp"
+#include "mailer.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <future>
 #include <unordered_set>
+#include <thread>
 
 namespace stockroom {
 namespace {
@@ -90,6 +92,18 @@ std::string dueToMysqlUtc(const std::string &iso) {
     }
     return value;
 }
+
+std::string htmlEscape(const std::string &raw) {
+    std::string result;
+    for (char ch : raw) {
+        if (ch == '&') result += "&amp;";
+        else if (ch == '<') result += "&lt;";
+        else if (ch == '>') result += "&gt;";
+        else if (ch == '"') result += "&quot;";
+        else result += ch;
+    }
+    return result;
+}
 }
 
 void registerLoanRoutes() {
@@ -156,6 +170,31 @@ void registerLoanRoutes() {
                 const auto result = receipt(tx, loanId);
                 storeEvent(tx, "loan", result);
                 commit(tx);
+                const auto email = result["email"].asString();
+                const auto number = result["receipt_number"].asString();
+                const auto details = "NGIGA Stockroom loan receipt\nReceipt: " + number +
+                    "\nBorrower: " + result["borrower_name"].asString() +
+                    "\nStudent / User ID: " + result["borrower_id"].asString() +
+                    "\nEquipment: " + result["equipment_name"].asString() +
+                    "\nItem serial: " + result["barcode"].asString() +
+                    "\nBorrowed: " + result["borrowed_at"].asString() +
+                    "\nReturn by: " + result["due_at"].asString() +
+                    "\nStatus: ACTIVE\n";
+                const auto html = std::string("<!doctype html><html><meta charset='utf-8'><style>body{font:14px Arial;max-width:380px;margin:36px auto;color:#0f0f0f}h1{text-align:center;color:#0b3d2e;font-size:22px}small{display:block;text-align:center;margin-bottom:36px}table{width:100%;border-collapse:collapse}td{padding:12px 4px;border-bottom:1px solid #dce7df}td:first-child{font-weight:bold;width:42%}.due{margin-top:25px;padding:14px;background:#edf5ef;color:#0b3d2e}</style><h1>NGIGA</h1><small>STOCKROOM RECEIPT</small><table>") +
+                    "<tr><td>Receipt</td><td>" + htmlEscape(number) + "</td></tr>" +
+                    "<tr><td>Borrower</td><td>" + htmlEscape(result["borrower_name"].asString()) + "</td></tr>" +
+                    "<tr><td>Student ID</td><td>" + htmlEscape(result["borrower_id"].asString()) + "</td></tr>" +
+                    "<tr><td>Equipment</td><td>" + htmlEscape(result["equipment_name"].asString()) + "</td></tr>" +
+                    "<tr><td>Item serial</td><td>" + htmlEscape(result["barcode"].asString()) + "</td></tr>" +
+                    "<tr><td>Borrowed</td><td>" + htmlEscape(result["borrowed_at"].asString()) + "</td></tr>" +
+                    "</table><div class='due'><strong>Return by:</strong> " +
+                    htmlEscape(result["due_at"].asString()) + "</div></html>";
+                std::thread([email, number, details, html]() {
+                    if (!sendEmail(email, "NGIGA loan receipt " + number,
+                                   "Your item has been borrowed. Please return it by the time shown in the attached receipt.\n\n" + details,
+                                   number + ".html", html))
+                        LOG_ERROR << "Loan receipt email failed for " << number;
+                }).detach();
                 callback(json(result, k201Created));
             } catch (const drogon::orm::DrogonDbException &) {
                 callback(error(k409Conflict, "Unit is unavailable or already has an active loan"));
@@ -168,6 +207,9 @@ void registerLoanRoutes() {
         [](const HttpRequestPtr &request, Callback &&callback, const std::string &barcode) {
             Json::Value user;
             if (!requireUser(request, callback, user)) return;
+            if (user["role"].asString() != "ADMIN") {
+                callback(error(k403Forbidden, "An administrator must process returns")); return;
+            }
             try {
                 auto db = app().getDbClient();
                 auto tx = db->newTransaction();

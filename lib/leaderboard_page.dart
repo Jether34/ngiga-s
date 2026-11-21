@@ -121,10 +121,10 @@ class _LeaderboardCard extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xff35245d),
-                  Color(0xff6947b4),
-                  Color(0xff7553b2),
-                  Color(0xff4a3188),
+                  Color(0xff0b3d2e),
+                  Color(0xff145a43),
+                  Color(0xff2f8f6f),
+                  Color(0xff0b3d2e),
                 ],
                 stops: [0, .4, .7, 1],
               )

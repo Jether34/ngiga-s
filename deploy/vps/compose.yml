@@ -35,6 +35,8 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
       ADMIN_NAME: Laboratory Administrator
       ADMIN_ID: ADMIN-001
+      SMTP_USERNAME: ${SMTP_USERNAME:?Set SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
     volumes:
       - /opt/ngiga-stockroom/mysql-ca.pem:/usr/local/share/ca-certificates/mysql-ca.crt:ro
     ports:

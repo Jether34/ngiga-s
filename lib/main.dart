@@ -246,6 +246,7 @@ class _HomeState extends State<Home> {
         () => silentNotifications =
             prefs.getBool('silent_notifications') ?? false,
       );
+      _syncReminders();
     }
   }
 
@@ -253,6 +254,7 @@ class _HomeState extends State<Home> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('silent_notifications', value);
     if (mounted) setState(() => silentNotifications = value);
+    _syncReminders();
   }
 
   Future<void> _loadAvatar() async {
@@ -323,12 +325,43 @@ class _HomeState extends State<Home> {
         err = null;
         loading = false;
       });
+      if (!isAdmin && Platform.isAndroid) {
+        _syncReminders();
+      }
     } catch (e) {
       if (mounted)
         setState(() {
           err = e.toString();
           loading = false;
         });
+    }
+  }
+
+  Future<void> _syncReminders() async {
+    if (!isAdmin && Platform.isAndroid) {
+      final active = loans
+          .where(
+            (loan) =>
+                loan['loan_status'] == 'ACTIVE' ||
+                loan['loan_status'] == 'OVERDUE',
+          )
+          .map(
+            (loan) => <String, dynamic>{
+              'id': '${loan['loan_id']}',
+              'name': '${loan['equipment_name']}',
+              'due':
+                  DateTime.tryParse('${loan['due_at']}')
+                      ?.millisecondsSinceEpoch ??
+                  0,
+            },
+          )
+          .toList();
+      try {
+        await const MethodChannel('stockroom/reminders').invokeMethod('sync', {
+          'loans': active,
+          'silent': silentNotifications,
+        });
+      } catch (_) {}
     }
   }
 
@@ -498,107 +531,115 @@ class _HomeState extends State<Home> {
     showDialog(
       context: context,
       builder: (c) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: AppPalette.mist,
-                    child: Icon(
-                      Icons.receipt_long_outlined,
-                      color: AppPalette.primary,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      backgroundColor: AppPalette.mist,
+                      child: Icon(
+                        Icons.receipt_long_outlined,
+                        color: AppPalette.primary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Loan receipt',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.bold,
-                            color: AppPalette.deep,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Loan receipt',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: AppPalette.deep,
+                            ),
                           ),
-                        ),
-                        Text(
-                          '${r['receipt_number']}',
-                          style: const TextStyle(color: AppPalette.muted),
-                        ),
+                          Text(
+                            '${r['receipt_number']}',
+                            style: const TextStyle(color: AppPalette.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(c).height * .48,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 14,
+                      children: [
+                        for (final field in fields.entries)
+                          SizedBox(
+                            width: math.min(
+                              210,
+                              (MediaQuery.sizeOf(c).width - 76) / 2,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  field.key.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppPalette.muted,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  field.value,
+                                  style: const TextStyle(color: AppPalette.ink),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(c).height * .48,
                 ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final field in fields.entries)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                field.key.toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: AppPalette.muted,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                field.value,
-                                style: const TextStyle(color: AppPalette.ink),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
+                const Divider(height: 22),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(c),
+                      child: const Text('Close'),
+                    ),
+                    TextButton(
+                      onPressed: () => _share(text),
+                      child: const Text('Copy'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pop(c);
+                        _exportReceipt(r);
+                      },
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      child: const Text(
+                        'Download receipt',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const Divider(height: 22),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(c),
-                    child: const Text('Close'),
-                  ),
-                  TextButton(
-                    onPressed: () => _share(text),
-                    child: const Text('Copy'),
-                  ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.pop(c);
-                      _exportReceipt(r);
-                    },
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                    ),
-                    child: const Text(
-                      'Download receipt',
-                      style: TextStyle(fontSize: 11),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -952,7 +993,7 @@ class _HomeState extends State<Home> {
       borderRadius: BorderRadius.circular(22),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x286c4cce),
+          color: Color(0x28145a43),
           blurRadius: 18,
           offset: Offset(0, 9),
         ),
@@ -1455,7 +1496,7 @@ class _HomeState extends State<Home> {
       ),
       const SizedBox(height: 8),
       const Text(
-        'Use the item barcode or QR code to borrow or return equipment.',
+        'Scan an item QR code to borrow equipment.',
         style: TextStyle(color: AppPalette.muted),
       ),
       const SizedBox(height: 22),
@@ -1491,21 +1532,6 @@ class _HomeState extends State<Home> {
               ),
             ],
           ),
-        ),
-      ),
-      const SizedBox(height: 14),
-      Card(
-        child: ListTile(
-          leading: const Icon(
-            Icons.assignment_return_outlined,
-            color: AppPalette.primary,
-          ),
-          title: const Text('Return an item'),
-          subtitle: const Text(
-            'Scan an item you borrowed to complete its return.',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => scan(returning: true),
         ),
       ),
     ],
@@ -1597,13 +1623,7 @@ class _HomeState extends State<Home> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const CircleAvatar(
-                              backgroundColor: AppPalette.mist,
-                              child: Icon(
-                                Icons.inventory_2_outlined,
-                                color: AppPalette.primary,
-                              ),
-                            ),
+                            _productPhoto(item, size: 62),
                             if (hotCount > 0 &&
                                 (item['borrow_count'] as num? ?? 0).toInt() ==
                                     hotCount)
@@ -1681,6 +1701,10 @@ class _HomeState extends State<Home> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if ('${detail['image'] ?? ''}'.isNotEmpty) ...[
+                    Center(child: _productPhoto(detail, size: 150)),
+                    const SizedBox(height: 14),
+                  ],
                   Text(
                     '${item['name']}',
                     style: const TextStyle(
@@ -1762,22 +1786,61 @@ class _HomeState extends State<Home> {
             child: Text('No borrowed items yet.'),
           ),
         for (final loan in loans)
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.receipt_long_outlined,
-                color: AppPalette.primary,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: AppPalette.line),
               ),
-              title: Text('${loan['equipment_name']}'),
-              subtitle: Text(
-                '${loan['loan_status']} • ${_shortDate(loan['borrowed_at'])}',
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _receiptDialog(loan),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.receipt_long_outlined,
+                        color: AppPalette.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${loan['equipment_name']}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_shortDate(loan['borrowed_at'])} / ${loan['loan_status']}',
+                              style: const TextStyle(
+                                color: AppPalette.muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Download receipt',
+                        icon: const Icon(
+                          Icons.download_outlined,
+                          color: AppPalette.primary,
+                        ),
+                        onPressed: () => _exportReceipt(loan),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              trailing: IconButton(
-                tooltip: 'Download receipt',
-                icon: const Icon(Icons.download_outlined),
-                onPressed: () => _exportReceipt(loan),
-              ),
-              onTap: () => _receiptDialog(loan),
             ),
           ),
       ],
@@ -1819,9 +1882,7 @@ class _HomeState extends State<Home> {
             .map(
               (e) => Card(
                 child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.inventory_2_outlined),
-                  ),
+                  leading: _productPhoto(e),
                   title: Text(e['name']),
                   subtitle: Text(
                     '${e['id']} / ${e['category']} / Total ${e['total']} / Available ${e['available']} / Issued ${e['issued']}',
@@ -1835,8 +1896,13 @@ class _HomeState extends State<Home> {
                             if (v == 'edit') _editProduct(e);
                             if (v == 'delete') _deleteProduct(e);
                             if (v == 'receive') _addUnits(e);
+                            if (v == 'photo') _uploadProductPhoto(e);
                           },
                           itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'photo',
+                              child: Text('Add / change photo'),
+                            ),
                             PopupMenuItem(
                               value: 'receive',
                               child: Text('Scan / enter item serial'),
@@ -2122,6 +2188,63 @@ class _HomeState extends State<Home> {
     }
   }
 
+  Widget _productPhoto(dynamic product, {double size = 48}) {
+    final encoded = '${product['image'] ?? ''}';
+    if (encoded.isEmpty) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: const Icon(
+          Icons.inventory_2_outlined,
+          color: AppPalette.primary,
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.memory(
+        base64Decode(encoded),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => SizedBox(
+          width: size,
+          height: size,
+          child: const Icon(Icons.broken_image_outlined),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _uploadProductPhoto(dynamic product) async {
+    final photo = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 900,
+      imageQuality: 65,
+    );
+    if (photo == null) return;
+    final bytes = await photo.readAsBytes();
+    if (bytes.length > 1000000) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choose an image smaller than 1 MB.')),
+        );
+      return;
+    }
+    try {
+      await api.patch(
+        '/equipment/${Uri.encodeComponent('${product['id']}')}/photo',
+        {'image': base64Encode(bytes)},
+      );
+      await load();
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save product photo: $e')),
+        );
+    }
+  }
+
   Future<void> _productUnits(dynamic product) async {
     try {
       final detail = Map<String, dynamic>.from(
@@ -2254,9 +2377,13 @@ class _HomeState extends State<Home> {
     await showDialog<void>(
       context: context,
       builder: (c) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         title: const Text('Current loans'),
-        content: SizedBox(
-          width: 520,
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 520,
+            maxHeight: MediaQuery.sizeOf(c).height * .65,
+          ),
           child: loans.isEmpty
               ? const Text('No loan records.')
               : ListView(
@@ -2537,7 +2664,7 @@ class _HomeState extends State<Home> {
               ),
             ),
             for (final (value, label, color) in [
-              ('violet', 'Violet', AppPalette.primary),
+              ('violet', 'Forest', AppPalette.primary),
               ('silver', 'Silver', const Color(0xffa7a9bd)),
               ('midnight', 'Midnight', AppPalette.deep),
             ])

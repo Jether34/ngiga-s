@@ -2,7 +2,7 @@ FROM ubuntu:24.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 ENV VCPKG_MAX_CONCURRENCY=1 CMAKE_BUILD_PARALLEL_LEVEL=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential ca-certificates cmake curl git ninja-build pkg-config tar unzip zip \
+    build-essential ca-certificates cmake curl libcurl4-openssl-dev git ninja-build pkg-config tar unzip zip \
     && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 https://github.com/microsoft/vcpkg.git /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics

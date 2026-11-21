@@ -15,14 +15,37 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_data MEDIUMTEXT NULL,
   terms_accepted_at DATETIME(6) NULL,
   deleted_at DATETIME(6) NULL,
+  email_verified_at DATETIME(6) NULL,
   role ENUM('ADMIN','STUDENT','FACULTY','USER') NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS email_challenges (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  code_hash VARCHAR(255) NOT NULL,
+  ip VARCHAR(45) NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  expires_at DATETIME(6) NOT NULL,
+  consumed_at DATETIME(6) NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  CONSTRAINT fk_challenge_user FOREIGN KEY (user_id) REFERENCES users(id),
+  INDEX idx_challenge_user_time (user_id, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS trusted_login_ips (
+  user_id VARCHAR(36) NOT NULL,
+  ip VARCHAR(45) NOT NULL,
+  verified_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (user_id, ip),
+  CONSTRAINT fk_trusted_ip_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS equipment (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(160) NOT NULL,
   category VARCHAR(100) NOT NULL,
-  min_stock INT UNSIGNED NOT NULL DEFAULT 0
+  min_stock INT UNSIGNED NOT NULL DEFAULT 0,
+  image_data MEDIUMTEXT NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS units (

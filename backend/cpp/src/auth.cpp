@@ -1,4 +1,5 @@
 #include "api.hpp"
+#include "mailer.hpp"
 
 #include "../vendor/bcrypt/include/bcrypt/bcrypt.h"
 #include <jwt-cpp/jwt.h>
@@ -7,6 +8,7 @@
 #include <cctype>
 #include <regex>
 #include <algorithm>
+#include <random>
 
 namespace stockroom {
 namespace {
@@ -26,6 +28,65 @@ std::string normalizedPhone(const std::string &value) {
     for (const unsigned char ch : value) {
         if (std::isdigit(ch) || (ch == '+' && result.empty())) result += static_cast<char>(ch);
     }
+    return result;
+}
+
+std::string clientIp(const drogon::HttpRequestPtr &request) {
+    const auto proxyIp = request->getHeader("x-real-ip");
+    if (std::regex_match(proxyIp, std::regex(R"([0-9a-fA-F:.]{3,45})"))) return proxyIp;
+    return request->peerAddr().toIp();
+}
+
+Json::Value sessionFor(const std::string &id, const std::string &email,
+                       const std::string &name, const std::string &accountId,
+                       const std::string &role) {
+    const auto token = jwt::create().set_issuer("stockroom").set_subject(id)
+        .set_issued_at(std::chrono::system_clock::now())
+        .set_expires_at(std::chrono::system_clock::now() + std::chrono::hours(12))
+        .sign(jwt::algorithm::hs256{secret()});
+    Json::Value user, result;
+    user["id"] = id;
+    user["email"] = email;
+    user["name"] = name;
+    user["account_id"] = accountId;
+    user["role"] = role;
+    result["token"] = token;
+    result["user"] = user;
+    return result;
+}
+
+Json::Value challengeFor(const std::shared_ptr<drogon::orm::DbClient> &db,
+                         const std::string &id, const std::string &email,
+                         const std::string &ip) {
+    const auto recent = db->execSqlSync(
+        "SELECT id FROM email_challenges WHERE user_id=? AND consumed_at IS NULL "
+        "AND attempts<5 AND expires_at>UTC_TIMESTAMP(6) "
+        "AND created_at>UTC_TIMESTAMP(6)-INTERVAL 60 SECOND ORDER BY created_at DESC LIMIT 1", id);
+    if (!recent.empty()) {
+        Json::Value result;
+        result["verification_required"] = true;
+        result["challenge_id"] = recent[0]["id"].as<std::string>();
+        result["email"] = email;
+        return result;
+    }
+    std::random_device entropy;
+    std::uniform_int_distribution<int> digits(0, 9);
+    std::string code;
+    for (int i = 0; i < 6; ++i) code += static_cast<char>('0' + digits(entropy));
+    const auto challengeId = drogon::utils::getUuid();
+    db->execSqlSync("INSERT INTO email_challenges(id,user_id,code_hash,ip,created_at,expires_at) "
+                    "VALUES(?,?,?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)+INTERVAL 10 MINUTE)",
+                    challengeId, id, bcrypt::generateHash(code, 12), ip);
+    if (!sendEmail(email, "Your NGIGA verification code",
+                   "Your NGIGA Stockroom verification code is " + code +
+                   ". It expires in 10 minutes. If you did not request it, ignore this email.")) {
+        db->execSqlSync("DELETE FROM email_challenges WHERE id=?", challengeId);
+        throw std::runtime_error("Verification email could not be sent. Try again shortly.");
+    }
+    Json::Value result;
+    result["verification_required"] = true;
+    result["challenge_id"] = challengeId;
+    result["email"] = email;
     return result;
 }
 }
@@ -55,7 +116,7 @@ Json::Value currentUser(const drogon::HttpRequestPtr &request) {
             .verify(token);
         auto db = drogon::app().getDbClient();
         const auto rows = db->execSqlSync(
-            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at FROM users WHERE id=? AND deleted_at IS NULL",
+            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at FROM users WHERE id=? AND deleted_at IS NULL AND (role<>'STUDENT' OR email_verified_at IS NOT NULL)",
             token.get_subject());
         if (rows.empty()) throw std::runtime_error("Session expired");
         Json::Value user;
@@ -136,12 +197,16 @@ void registerAuthRoutes() {
                     "INSERT INTO users(id,email,password_hash,name,account_id,phone,year_level,program,section,home_address,terms_accepted_at,role) VALUES(?,?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6),'STUDENT')",
                     uid, email, hash, name, accountId, phone, yearLevel, program, section, address);
                 Json::Value result;
-                result["message"] = "Student account created. Sign in to continue.";
+                result = challengeFor(db, uid, email, clientIp(request));
+                result["message"] = "Enter the six-digit code sent to your email.";
                 result["account_id"] = accountId;
                 result["role"] = "STUDENT";
                 callback(json(result, k201Created));
             } catch (const drogon::orm::DrogonDbException &) {
                 callback(error(k409Conflict, "That email or phone number is already registered"));
+            } catch (const std::runtime_error &e) {
+                callback(error(k503ServiceUnavailable,
+                    "Account created, but verification email could not be sent. Sign in to retry."));
             } catch (...) {
                 callback(error(k500InternalServerError, "Unable to create account"));
             }
@@ -171,37 +236,72 @@ void registerAuthRoutes() {
                 }
                 const auto rows = phoneLogin
                     ? db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE deleted_at IS NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
+                        "SELECT id,email,password_hash,name,account_id,role,email_verified_at FROM users WHERE deleted_at IS NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
                         normalizedPhone(phone))
                     : db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE deleted_at IS NULL AND lower(email)=lower(?)",
+                        "SELECT id,email,password_hash,name,account_id,role,email_verified_at FROM users WHERE deleted_at IS NULL AND lower(email)=lower(?)",
                         email);
                 if (rows.empty() || !bcrypt::validatePassword(
                         password, rows[0]["password_hash"].as<std::string>())) {
                     callback(error(k401Unauthorized, "Email, phone, or password is incorrect")); return;
                 }
                 const auto uid = rows[0]["id"].as<std::string>();
-                const auto token = jwt::create()
-                    .set_issuer("stockroom")
-                    .set_subject(uid)
-                    .set_issued_at(std::chrono::system_clock::now())
-                    .set_expires_at(std::chrono::system_clock::now() + std::chrono::hours(12))
-                    .sign(jwt::algorithm::hs256{secret()});
-                Json::Value user;
-                user["id"] = uid;
-                user["email"] = rows[0]["email"].as<std::string>();
-                user["name"] = rows[0]["name"].as<std::string>();
-                user["account_id"] = rows[0]["account_id"].as<std::string>();
-                user["role"] = rows[0]["role"].as<std::string>();
-                Json::Value result;
-                result["token"] = token;
-                result["user"] = user;
+                const auto ip = clientIp(request);
+                if (rows[0]["role"].as<std::string>() == "STUDENT") {
+                    const auto trusted = db->execSqlSync(
+                        "SELECT 1 FROM trusted_login_ips WHERE user_id=? AND ip=?", uid, ip);
+                    if (rows[0]["email_verified_at"].isNull() || trusted.empty()) {
+                        callback(json(challengeFor(db, uid, rows[0]["email"].as<std::string>(), ip)));
+                        return;
+                    }
+                }
+                const auto result = sessionFor(uid, rows[0]["email"].as<std::string>(),
+                    rows[0]["name"].as<std::string>(), rows[0]["account_id"].as<std::string>(),
+                    rows[0]["role"].as<std::string>());
                 callback(json(result));
+            } catch (const std::runtime_error &e) {
+                callback(error(k503ServiceUnavailable, e.what()));
             } catch (...) {
                 callback(error(k500InternalServerError, "Unable to sign in"));
             }
         },
         {Post});
+
+    app().registerHandler(
+        "/auth/verify",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            const auto body = request->getJsonObject();
+            if (!body || !std::regex_match(field(*body, "code"), std::regex(R"([0-9]{6})"))) {
+                callback(error(k422UnprocessableEntity, "Enter the six-digit email code")); return;
+            }
+            try {
+                auto db = app().getDbClient();
+                const auto rows = db->execSqlSync(
+                    "SELECT c.id,c.code_hash,c.attempts,"
+                    "c.expires_at>UTC_TIMESTAMP(6) AS valid,u.id AS user_id,u.email,u.name,u.account_id,u.role "
+                    "FROM email_challenges c JOIN users u ON u.id=c.user_id "
+                    "WHERE c.id=? AND c.consumed_at IS NULL AND u.deleted_at IS NULL",
+                    field(*body, "challenge_id"));
+                if (rows.empty() || rows[0]["valid"].as<int>() != 1 || rows[0]["attempts"].as<int>() >= 5) {
+                    callback(error(k410Gone, "Code expired. Sign in again for a new code.")); return;
+                }
+                const auto id = rows[0]["id"].as<std::string>();
+                db->execSqlSync("UPDATE email_challenges SET attempts=attempts+1 WHERE id=?", id);
+                if (!bcrypt::validatePassword(field(*body, "code"),
+                        rows[0]["code_hash"].as<std::string>())) {
+                    callback(error(k403Forbidden, "Incorrect verification code")); return;
+                }
+                db->execSqlSync("UPDATE email_challenges SET consumed_at=UTC_TIMESTAMP(6) "
+                                "WHERE id=? AND consumed_at IS NULL", id);
+                const auto uid = rows[0]["user_id"].as<std::string>();
+                db->execSqlSync("UPDATE users SET email_verified_at=COALESCE(email_verified_at,UTC_TIMESTAMP(6)) WHERE id=?", uid);
+                db->execSqlSync("INSERT INTO trusted_login_ips(user_id,ip,verified_at) VALUES(?,?,UTC_TIMESTAMP(6)) "
+                                "ON DUPLICATE KEY UPDATE verified_at=UTC_TIMESTAMP(6)", uid, clientIp(request));
+                callback(json(sessionFor(uid, rows[0]["email"].as<std::string>(),
+                    rows[0]["name"].as<std::string>(), rows[0]["account_id"].as<std::string>(),
+                    rows[0]["role"].as<std::string>())));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to verify email")); }
+        }, {Post});
 
     app().registerHandler(
         "/me",

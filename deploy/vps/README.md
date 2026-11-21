@@ -4,7 +4,7 @@ The API and MySQL database run in the `ngiga-stockroom` Docker Compose project. 
 
 MySQL is reachable only on the project's private Docker network. The API trusts the database container's CA certificate, mounted from `/opt/ngiga-stockroom/mysql-ca.pem`. The mobile app communicates with Nginx over HTTPS.
 
-The deployment uses a private `.env` file beside `compose.yml`. Supply `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `SECRET_KEY`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. Keep this file out of Git.
+The deployment uses a private `.env` file beside `compose.yml`. Supply `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `SECRET_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SMTP_USERNAME`, and `SMTP_PASSWORD`. Use a Gmail app password for SMTP and keep this file out of Git.
 
 Deploy from `/opt/ngiga-stockroom/deploy/vps` on the VPS:
 
