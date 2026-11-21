@@ -47,6 +47,45 @@ std::string resetToken() {
     return out.str();
 }
 
+std::string htmlEscape(const std::string &value) {
+    std::string escaped;
+    for (char ch : value) {
+        switch (ch) {
+            case '&': escaped += "&amp;"; break;
+            case '<': escaped += "&lt;"; break;
+            case '>': escaped += "&gt;"; break;
+            case '"': escaped += "&quot;"; break;
+            default: escaped += ch;
+        }
+    }
+    return escaped;
+}
+
+std::string mailFrame(const std::string &heading, const std::string &body) {
+    return std::string(R"MAIL(<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NGIGA Stockroom</title></head><body style="margin:0;padding:0;background:#f4f7f3;font-family:Arial,Helvetica,sans-serif;color:#0f0f0f"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f4f7f3"><tr><td align="center" style="padding:28px 12px"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#fff;border:1px solid #dce7df;border-radius:18px;overflow:hidden"><tr><td style="background:#0b3d2e;padding:24px 30px;color:#fff"><span style="font-size:22px;font-weight:800;letter-spacing:2px">NGIGA</span><span style="font-size:11px;letter-spacing:2px;margin-left:12px;color:#d7c7a1">STOCKROOM</span></td></tr><tr><td style="padding:30px"><p style="color:#2f8f6f;letter-spacing:2px;font-size:11px;font-weight:700;margin:0 0 10px">ACCOUNT SECURITY</p><h1 style="font-size:27px;line-height:1.2;color:#0b3d2e;margin:0 0 16px">)MAIL") +
+        htmlEscape(heading) + R"MAIL(</h1>)MAIL" + body +
+        R"MAIL(</td></tr><tr><td style="border-top:1px solid #dce7df;padding:19px 30px;color:#617168;font-size:12px;line-height:1.5">This message was sent by NGIGA Stockroom. If you did not request it, you can ignore this email. Never share your code or password.</td></tr></table></td></tr></table></body></html>)MAIL";
+}
+
+std::string verificationMailHtml(const std::string &code) {
+    std::string cells;
+    for (char digit : code) {
+        cells += "<td align=\"center\" style=\"width:16.6%;padding:0 3px\"><div style=\"border:1px solid #dce7df;border-radius:9px;background:#fff;padding:14px 0;font-size:25px;font-weight:700;color:#0b3d2e\">";
+        cells += digit;
+        cells += "</div></td>";
+    }
+    return mailFrame("Verify your email", std::string(
+        R"MAIL(<p style="font-size:15px;line-height:1.6;color:#465c51;margin:0 0 24px">Use this six-digit code in the app to finish signing in.</p><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#edf5ef;border-radius:14px;padding:16px 8px"><tr>)MAIL") + cells +
+        R"MAIL(</tr></table><p style="font-size:13px;line-height:1.5;color:#617168;margin:22px 0 0">The code expires in <strong>10 minutes</strong>. You have five attempts.</p>)MAIL");
+}
+
+std::string resetMailHtml(const std::string &link) {
+    const auto safeLink = htmlEscape(link);
+    return mailFrame("Reset your password", std::string(
+        R"MAIL(<p style="font-size:15px;line-height:1.6;color:#465c51;margin:0 0 24px">We received a request to change your NGIGA Stockroom password. Use the secure button below to choose a new one.</p><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#145a43;border-radius:10px"><a href=")MAIL") + safeLink +
+        R"MAIL(" style="display:inline-block;padding:14px 24px;color:#fff;text-decoration:none;font-size:15px;font-weight:700">Change password</a></td></tr></table><p style="font-size:13px;line-height:1.5;color:#617168;margin:23px 0 8px">This link expires in <strong>10 minutes</strong> and works once.</p><p style="font-size:12px;line-height:1.5;color:#617168;word-break:break-all;margin:0">If the button does not open, copy this link:<br><a style="color:#145a43" href=")MAIL" + safeLink + R"MAIL(">)MAIL" + safeLink + R"MAIL(</a></p>)MAIL");
+}
+
 Json::Value sessionFor(const std::string &id, const std::string &email,
                        const std::string &name, const std::string &accountId,
                        const std::string &role) {
@@ -89,7 +128,8 @@ Json::Value challengeFor(const std::shared_ptr<drogon::orm::DbClient> &db,
                     challengeId, id, bcrypt::generateHash(code, 12), ip);
     if (!sendEmail(email, "Your NGIGA verification code",
                    "Your NGIGA Stockroom verification code is " + code +
-                   ". It expires in 10 minutes. If you did not request it, ignore this email.")) {
+                   ". It expires in 10 minutes. If you did not request it, ignore this email.",
+                   "", "", verificationMailHtml(code))) {
         db->execSqlSync("DELETE FROM email_challenges WHERE id=?", challengeId);
         throw std::runtime_error("Verification email could not be sent. Try again shortly.");
     }
@@ -347,7 +387,15 @@ void registerAuthRoutes() {
                         "SELECT id FROM password_resets WHERE user_id=? AND consumed_at IS NULL "
                         "AND created_at>UTC_TIMESTAMP(6)-INTERVAL 60 SECOND "
                         "ORDER BY created_at DESC LIMIT 1", uid);
-                    if (recent.empty()) {
+                    if (!recent.empty()) {
+                        callback(error(k429TooManyRequests,
+                            "A reset link was sent recently. Check your inbox or spam folder, then wait a minute before requesting another."));
+                        return;
+                    }
+                    {
+                        db->execSqlSync(
+                            "UPDATE password_resets SET consumed_at=UTC_TIMESTAMP(6) "
+                            "WHERE user_id=? AND consumed_at IS NULL", uid);
                         const auto token = resetToken();
                         const auto id = drogon::utils::getUuid();
                         db->execSqlSync(
@@ -357,12 +405,15 @@ void registerAuthRoutes() {
                         const char *configured = std::getenv("PUBLIC_API_URL");
                         const std::string base = configured && *configured ? configured :
                             "https://pns-sysnnova.cloud/stockroom-api";
+                        const auto link = base + "/auth/password-reset/page?id=" + id + "&token=" + token;
                         if (!sendEmail(users[0]["email"].as<std::string>(),
                                        "Your NGIGA password reset link",
                                        "Open this link to change your NGIGA Stockroom password:\n" +
-                                       base + "/auth/password-reset/page?id=" + id + "&token=" + token +
-                                       "\n\nThe link expires in 10 minutes and works once. If you did not request it, ignore this email.")) {
+                                       link +
+                                       "\n\nThe link expires in 10 minutes and works once. If you did not request it, ignore this email.",
+                                       "", "", resetMailHtml(link))) {
                             db->execSqlSync("DELETE FROM password_resets WHERE id=?", id);
+                            LOG_ERROR << "Password reset email delivery failed for user " << uid;
                             callback(error(k503ServiceUnavailable, "Could not send the reset email. Try again shortly."));
                             return;
                         }

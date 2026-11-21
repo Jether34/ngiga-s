@@ -1,8 +1,26 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionStore {
   static const key = 'token';
   static const iconTokenKey = 'icon_switch_token';
+  static const userKey = 'cached_user';
+
+  Future<Map<String, dynamic>> restoreUser() async {
+    final preferences = await SharedPreferences.getInstance();
+    try {
+      final value = jsonDecode(preferences.getString(userKey) ?? '{}');
+      return value is Map ? Map<String, dynamic>.from(value) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> saveUser(Map<String, dynamic> user) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(userKey, jsonEncode(user));
+  }
 
   Future<String> restore() async {
     final preferences = await SharedPreferences.getInstance();
@@ -36,5 +54,6 @@ class SessionStore {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(key);
     await clearIconChangeHold();
+    await preferences.remove(userKey);
   }
 }

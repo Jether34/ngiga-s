@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'auth_screen.dart';
+import 'app_slide_route.dart';
 import 'app_palette.dart';
 import 'student_profile_editor.dart';
 import 'notification_page.dart';
@@ -177,17 +178,30 @@ class _RootState extends State<Root> {
 
   Future<void> _restore() async {
     api.token = await sessions.restore();
+    if (api.token.isNotEmpty) api.user = await sessions.restoreUser();
     try {
-      if (api.token.isNotEmpty)
+      if (api.token.isNotEmpty) {
         api.user = Map<String, dynamic>.from(await api.get('/me'));
-    } catch (_) {
-      api.token = '';
-      await sessions.clear();
+        await sessions.saveUser(api.user);
+      }
+    } catch (error) {
+      final message = '$error';
+      if (message.contains('Session expired') ||
+          message.contains('Sign in required') ||
+          message.contains('Server error (401)')) {
+        api.token = '';
+        api.user = {};
+        await sessions.clear();
+      } else if (api.user.isEmpty) {
+        // Keep the saved token so a later launch can retry after a network outage.
+        api.token = '';
+      }
     }
     if (mounted) setState(() => ready = true);
   }
 
   void _signed(bool remember) async {
+    await sessions.saveUser(api.user);
     await sessions.save(api.token, remember: remember);
     if (mounted) setState(() {});
   }
@@ -448,7 +462,7 @@ class _HomeState extends State<Home> {
       if (!mounted) return;
       final code = await Navigator.push<String>(
         context,
-        MaterialPageRoute(
+        appSlideRoute(
           builder: (_) =>
               ScanPage(title: returning ? 'Scan to return' : 'Scan to borrow'),
         ),
@@ -1474,7 +1488,7 @@ class _HomeState extends State<Home> {
 
   void _openNotifications() {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      appSlideRoute(
         builder: (context) => NotificationPage(
           initial: notifications,
           onRead: (id) => setState(() {
@@ -2474,7 +2488,7 @@ class _HomeState extends State<Home> {
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
+          appSlideRoute(
             builder: (_) =>
                 StudentProfileEditor(onSaved: () => setState(() {})),
           ),

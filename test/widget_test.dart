@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ngiga/auth_screen.dart';
+import 'package:ngiga/app_slide_route.dart';
 import 'package:ngiga/auth_policy_sheet.dart';
 import 'package:ngiga/session_store.dart';
 import 'package:ngiga/main.dart' show api;
@@ -61,12 +62,56 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final sessions = SessionStore();
     await sessions.save('remembered-token', remember: true);
+    await sessions.saveUser({'name': 'Student', 'account_id': 'STU-1'});
     expect(await sessions.restore(), 'remembered-token');
+    expect((await sessions.restoreUser())['name'], 'Student');
     await sessions.save('temporary-token', remember: false);
     expect(await sessions.restore(), isEmpty);
     await sessions.save('remembered-again', remember: true);
     await sessions.clear();
     expect(await sessions.restore(), isEmpty);
+    expect(await sessions.restoreUser(), isEmpty);
+  });
+
+  testWidgets('subpage slides in and slides back without painting through', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                appSlideRoute(
+                  builder: (_) =>
+                      const Scaffold(body: Center(child: Text('Destination'))),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(tester.getTopLeft(find.text('Destination')).dx, greaterThan(0));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Destination')).dx,
+      closeTo(
+        tester.view.physicalSize.width / tester.view.devicePixelRatio / 2 -
+            tester.getSize(find.text('Destination')).width / 2,
+        2,
+      ),
+    );
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.text('Destination'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Destination'), findsNothing);
   });
 
   test('icon switch keeps the session until sign out', () async {

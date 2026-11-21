@@ -988,7 +988,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 20),
         _heading(
           'Check your email',
-          'If ${resetEmail.text.trim()} has an account, we sent a link with password change steps. The link expires in 10 minutes.',
+          'If ${resetEmail.text.trim()} has an account, a password reset link is on its way. Check your inbox and spam folder. The link expires in 10 minutes.',
         ),
         const SizedBox(height: 18),
         TextButton(

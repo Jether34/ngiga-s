@@ -6,7 +6,7 @@
 namespace stockroom {
 bool sendEmail(const std::string &recipient, const std::string &subject,
                const std::string &message, const std::string &attachmentName,
-               const std::string &attachment) {
+               const std::string &attachment, const std::string &htmlBody) {
     const char *username = std::getenv("SMTP_USERNAME");
     const char *password = std::getenv("SMTP_PASSWORD");
     if (!username || !password || !*username || !*password ||
@@ -23,9 +23,23 @@ bool sendEmail(const std::string &recipient, const std::string &subject,
     headers = curl_slist_append(headers, from.c_str());
     headers = curl_slist_append(headers, to.c_str());
     headers = curl_slist_append(headers, ("Subject: " + safeSubject).c_str());
-    curl_mimepart *part = curl_mime_addpart(mime);
-    curl_mime_data(part, message.c_str(), CURL_ZERO_TERMINATED);
-    curl_mime_type(part, "text/plain; charset=utf-8");
+    curl_mimepart *part;
+    if (htmlBody.empty()) {
+        part = curl_mime_addpart(mime);
+        curl_mime_data(part, message.c_str(), CURL_ZERO_TERMINATED);
+        curl_mime_type(part, "text/plain; charset=utf-8");
+    } else {
+        curl_mime *alternatives = curl_mime_init(curl);
+        part = curl_mime_addpart(alternatives);
+        curl_mime_data(part, message.c_str(), CURL_ZERO_TERMINATED);
+        curl_mime_type(part, "text/plain; charset=utf-8");
+        part = curl_mime_addpart(alternatives);
+        curl_mime_data(part, htmlBody.c_str(), CURL_ZERO_TERMINATED);
+        curl_mime_type(part, "text/html; charset=utf-8");
+        part = curl_mime_addpart(mime);
+        curl_mime_subparts(part, alternatives);
+        curl_mime_type(part, "multipart/alternative");
+    }
     if (!attachmentName.empty()) {
         part = curl_mime_addpart(mime);
         curl_mime_data(part, attachment.c_str(), attachment.size());
