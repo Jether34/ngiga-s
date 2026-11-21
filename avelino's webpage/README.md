@@ -5,7 +5,7 @@ React, JavaScript (JSX), regular CSS, Vite, and Lucide React implementation of t
 ## Run locally
 
 ```bash
-cd frontend
+cd "avelino's webpage"
 npm install
 npm run dev
 ```
@@ -15,6 +15,8 @@ Open the local address printed by Vite, normally `http://localhost:5173`. For a 
 ## Cloudflare deployment
 
 This is a Vite application. Deploy the **built `dist` directory**, not the source folder. The source `index.html` references `/src/main.jsx`, which a browser cannot run directly. The Worker configuration in `wrangler.jsonc` serves `./dist` and falls back to `index.html` for application routes.
+
+This copy deploys to its own `ngiga-avelino-demo` Worker. The recovered portfolio remains on the separate `lingering-wave-20b9` Worker.
 
 For the `Jether` branch of `ngiga-s`, set these Cloudflare **Workers Builds** settings:
 
