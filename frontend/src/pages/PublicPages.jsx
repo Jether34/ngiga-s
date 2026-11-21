@@ -224,6 +224,7 @@ export function Welcome({ navigate }) {
             aria-label="Show available Canon EOS R50 card"
             aria-pressed={selectedVisual === "back"}
             onMouseEnter={() => setSelectedVisual("back")}
+            onMouseLeave={() => setSelectedVisual((current) => current === "back" ? null : current)}
             onClick={() => setSelectedVisual("back")}
             onKeyDown={(event) => selectVisualOnKey(event, "back")}
           >
@@ -278,6 +279,7 @@ export function Welcome({ navigate }) {
             aria-label="Show scan a unit card"
             aria-pressed={selectedVisual === "float"}
             onMouseEnter={() => setSelectedVisual("float")}
+            onMouseLeave={() => setSelectedVisual((current) => current === "float" ? null : current)}
             onClick={() => setSelectedVisual("float")}
             onKeyDown={(event) => selectVisualOnKey(event, "float")}
           >
