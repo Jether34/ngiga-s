@@ -1,12 +1,13 @@
 :root {
   font-family: "DM Sans", Arial, sans-serif;
-  color: #0F0F0F;
-  background: #F7F9F6;
+  color: var(--ink, #0F0F0F);
+  background: var(--cream, #F7F9F6);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  scrollbar-gutter: stable;
 }
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
 * {
   box-sizing: border-box;
 }

@@ -7,6 +7,7 @@ import {
   units as fixtureUnits,
 } from "./data/fixtures";
 import { demoService } from "./services/demoService";
+import { readAvatar, readTheme, saveAvatar, saveTheme } from "./utils/preferences";
 import { Notice } from "./components/ui";
 
 import { Welcome, Auth } from "./pages/PublicPages";
@@ -55,6 +56,7 @@ function NotFound({ navigate, session }) {
 }
 
 function App() {
+  const [theme, setTheme] = useState(readTheme);
   const [route, setRoute] = useState(window.location.pathname);
   const [routePhase, setRoutePhase] = useState("idle");
   const routeRef = useRef(window.location.pathname);
@@ -70,6 +72,31 @@ function App() {
       return null;
     }
   });
+  const [avatar, setAvatar] = useState(() => {
+    try {
+      const user = JSON.parse(sessionStorage.getItem("equip-demo-session"));
+      return readAvatar(user?.schoolEmail);
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      document.documentElement.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
+  const updateTheme = (value) => {
+    setTheme(value);
+    saveTheme(value);
+  };
+  const updateAvatar = (dataUrl) => {
+    saveAvatar(session.schoolEmail, dataUrl);
+    setAvatar(dataUrl);
+  };
   const [data, setData] = useState({
     products: fixtureProducts,
     units: fixtureUnits,
@@ -130,11 +157,13 @@ function App() {
   };
   const setSession = (user) => {
     setSessionState(user);
+    setAvatar(readAvatar(user?.schoolEmail));
     sessionStorage.setItem("equip-demo-session", JSON.stringify(user));
   };
   const logout = async () => {
     await demoService.logOut();
     setSessionState(null);
+    setAvatar("");
     sessionStorage.removeItem("equip-demo-session");
     navigate("/");
   };
@@ -218,6 +247,10 @@ function App() {
             role="STUDENT"
             logout={logout}
             notify={notify}
+            avatar={avatar}
+            updateAvatar={updateAvatar}
+            theme={theme}
+            updateTheme={updateTheme}
           />
         );
       else child = <NotFound navigate={navigate} session={session} />;
@@ -225,6 +258,7 @@ function App() {
         <Shell
           role="STUDENT"
           session={session}
+          avatar={avatar}
           route={route}
           navigate={navigate}
           logout={logout}
@@ -277,6 +311,10 @@ function App() {
             role="ADMIN"
             logout={logout}
             notify={notify}
+            avatar={avatar}
+            updateAvatar={updateAvatar}
+            theme={theme}
+            updateTheme={updateTheme}
           />
         );
       else child = <NotFound navigate={navigate} session={session} />;
@@ -284,6 +322,7 @@ function App() {
         <Shell
           role="ADMIN"
           session={session}
+          avatar={avatar}
           route={route}
           navigate={navigate}
           logout={logout}

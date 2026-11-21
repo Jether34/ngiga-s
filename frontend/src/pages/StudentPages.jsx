@@ -19,6 +19,11 @@ import {
   QrCode,
   RefreshCw,
   LockKeyhole,
+  Camera,
+  Trash2,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { receipts } from "../data/fixtures";
 import { demoService } from "../services/demoService";
@@ -43,6 +48,7 @@ import {
 } from "../utils/domain";
 import { ProductDetail } from "../components/ProductDetail";
 import { ScanCapture } from "../components/ScanCapture";
+import { optimizeAvatar } from "../utils/preferences";
 
 export function StudentHome({
   session,
@@ -736,7 +742,32 @@ export function StudentHistory({ session, loans, units, products }) {
   );
 }
 
-export function SettingsPage({ session, role, logout, notify }) {
+export function SettingsPage({ session, role, logout, notify, avatar, updateAvatar, theme, updateTheme }) {
+  const avatarInputRef = useRef(null);
+  const [avatarError, setAvatarError] = useState("");
+  const initials = session.fullName.split(" ").map((part) => part[0]).slice(0, 2).join("");
+  const onAvatarSelected = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const optimized = await optimizeAvatar(file);
+      updateAvatar(optimized);
+      setAvatarError("");
+      notify("Profile picture saved in this browser.");
+    } catch (uploadError) {
+      setAvatarError(uploadError.message || "Could not save the profile picture.");
+    }
+  };
+  const removeAvatar = () => {
+    try {
+      updateAvatar("");
+      setAvatarError("");
+      notify("Profile picture removed.");
+    } catch {
+      setAvatarError("Could not remove the profile picture.");
+    }
+  };
   const [form, setForm] = useState({
     fullName: session.fullName,
     program: session.program || "",
@@ -793,6 +824,7 @@ export function SettingsPage({ session, role, logout, notify }) {
         eyebrow={`${role} / SETTINGS`}
         title="Account settings"
         description="Review your profile, security, and preferences."
+        action={<span className="avatar settings-header-avatar" aria-label="Current profile picture">{avatar ? <img src={avatar} alt="" /> : initials}</span>}
       />
       <DemoNote>
         Profile and security changes are validated locally. They require a
@@ -806,6 +838,19 @@ export function SettingsPage({ session, role, logout, notify }) {
               <h2>Personal information</h2>
             </div>
             <CircleUserRound size={22} />
+          </div>
+          <div className="profile-photo-control">
+            <span className="avatar profile-photo-preview" aria-label="Profile picture preview">{avatar ? <img src={avatar} alt="" /> : initials}</span>
+            <div className="profile-photo-actions">
+              <strong>Profile picture</strong>
+              <p>JPEG, PNG, or WebP · Up to 2 MB. Stored only in this browser.</p>
+              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onAvatarSelected} aria-label="Choose profile picture" className="visually-hidden" />
+              <div className="profile-photo-buttons">
+                <button type="button" className="button secondary" onClick={() => avatarInputRef.current?.click()}><Camera size={16} /> {avatar ? "Change picture" : "Upload picture"}</button>
+                {avatar && <button type="button" className="button secondary" onClick={removeAvatar}><Trash2 size={16} /> Remove</button>}
+              </div>
+              {avatarError && <small className="field-error" role="alert">{avatarError}</small>}
+            </div>
           </div>
           <form onSubmit={save}>
             <div className="form-grid">
@@ -881,6 +926,21 @@ export function SettingsPage({ session, role, logout, notify }) {
           </form>
         </div>
         <div className="settings-side">
+          <div className="panel">
+            <div className="panel-title">
+              <div><span className="eyebrow">APPEARANCE</span><h2>Theme preference</h2></div>
+              <Sun size={21} />
+            </div>
+            <div className="theme-options" role="radiogroup" aria-label="Theme preference">
+              {[["light", "Light mode", Sun], ["dark", "Dark mode", Moon], ["system", "System default", Monitor]].map(([value, label, Icon]) => (
+                <label className={`theme-option ${theme === value ? "selected" : ""}`} key={value}>
+                  <input type="radio" name="theme" value={value} checked={theme === value} onChange={() => updateTheme(value)} />
+                  <Icon size={18} /><span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <p className="fine-print">Your choice is saved on this device. System default follows your device appearance.</p>
+          </div>
           <div className="panel">
             <div className="panel-title">
               <div>

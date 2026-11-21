@@ -16,6 +16,7 @@ import { studentLinks, adminLinks } from "../utils/domain";
 export function Shell({
   role,
   session,
+  avatar,
   route,
   navigate,
   logout,
@@ -117,7 +118,7 @@ export function Shell({
             onClick={() => navigate(prefix + "/settings")}
           >
             <span className="avatar">
-              {session.fullName
+              {avatar ? <img src={avatar} alt="" /> : session.fullName
                 .split(" ")
                 .map((x) => x[0])
                 .slice(0, 2)
@@ -191,7 +192,7 @@ export function Shell({
               onClick={() => navigate(prefix + "/settings")}
             >
               <span className="avatar small-avatar">
-                {session.fullName
+                {avatar ? <img src={avatar} alt="" /> : session.fullName
                   .split(" ")
                   .map((x) => x[0])
                   .slice(0, 2)

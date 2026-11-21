@@ -22,6 +22,8 @@ The Log In page has **Student demo** and **Admin demo** buttons. These create an
 
 All fixture data and workflow results are previews. Borrowing, receiving, issuing, returning, signup, product edits, profile edits, account status changes, and password validation do **not** persist to a server. Receipt file and email actions stay unavailable until a receipt service supplies real artifacts and delivery state. Refresh reloads fixture data.
 
+Profile pictures are validated, resized to at most 256 pixels, and stored in this browser's local storage for the current demo account. Theme preference is also stored locally; System default follows the device setting. Neither preference syncs to a server or another device.
+
 ## Configuration
 
 Copy `.env.example` to `.env.local` and adjust the school name and permitted school email domains. The default `university.edu` is illustrative. Camera scanning uses the browser's `getUserMedia` and `BarcodeDetector` when available; manual code entry always remains available. Camera permission usually requires localhost or HTTPS.
