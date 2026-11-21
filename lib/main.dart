@@ -5,11 +5,13 @@ import 'dart:math' as math;
 
 import 'auth_screen.dart';
 import 'app_slide_route.dart';
+import 'app_notice.dart';
 import 'app_palette.dart';
 import 'student_profile_editor.dart';
 import 'notification_page.dart';
 import 'header_haze.dart';
 import 'leaderboard_page.dart';
+import 'skeleton_loading.dart';
 import 'session_store.dart';
 import 'receipt_export.dart';
 
@@ -215,7 +217,7 @@ class _RootState extends State<Root> {
 
   @override
   Widget build(BuildContext context) => !ready
-      ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+      ? const Scaffold(body: SafeArea(child: DashboardSkeleton()))
       : api.token.isEmpty
       ? AuthScreen(onLogin: _signed)
       : Home(onLogout: _logout);
@@ -301,9 +303,7 @@ class _HomeState extends State<Home> {
       if (mounted) setState(() => avatarBytes = bytes);
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not update photo: $e')));
+        showAppNotice(context, 'Could not update photo: $e', isError: true);
     }
   }
 
@@ -402,8 +402,7 @@ class _HomeState extends State<Home> {
                       'Stock transaction recorded for ${record['equipment_id']}',
                     _ => 'Inventory status updated',
                   };
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text(message)));
+                  showAppNotice(context, message);
                 }
                 load();
               },
@@ -432,12 +431,10 @@ class _HomeState extends State<Home> {
           setState(() => equipment = fresh);
         } catch (_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Borrowing requires an active internet connection. No loan was created.',
-                ),
-              ),
+            showAppNotice(
+              context,
+              'Borrowing requires an active internet connection. No loan was created.',
+              isError: true,
             );
           }
           return;
@@ -527,14 +524,12 @@ class _HomeState extends State<Home> {
             detail.contains('SocketException') ||
             detail.contains('ClientException') ||
             detail.contains('TimeoutException');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              offline
-                  ? 'Connection lost. Nothing was queued; retry when online.'
-                  : 'Not completed: $e',
-            ),
-          ),
+        showAppNotice(
+          context,
+          offline
+              ? 'Connection lost. Nothing was queued; retry when online.'
+              : 'Not completed: $e',
+          isError: true,
         );
       }
     }
@@ -703,8 +698,7 @@ class _HomeState extends State<Home> {
               'bytes': bytes,
             });
         if (saved == true && mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('Saved $fileName')));
+          showAppNotice(context, 'Saved $fileName');
         }
       } else if (format == 'pdf') {
         await Printing.sharePdf(bytes: bytes, filename: fileName);
@@ -713,9 +707,7 @@ class _HomeState extends State<Home> {
       }
     } catch (error) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save receipt: $error')),
-        );
+        showAppNotice(context, 'Could not save receipt: $error', isError: true);
     }
   }
 
@@ -751,11 +743,7 @@ class _HomeState extends State<Home> {
   void _share(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (mounted)
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Receipt copied. You can paste or share it.'),
-        ),
-      );
+      showAppNotice(context, 'Receipt copied. You can paste or share it.');
   }
 
   @override
@@ -1081,7 +1069,7 @@ class _HomeState extends State<Home> {
 
   Widget _dashboard() {
     if (isAdmin) return _adminDashboard();
-    if (loading) return const Center(child: CircularProgressIndicator());
+    if (loading) return const DashboardSkeleton();
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -1226,7 +1214,7 @@ class _HomeState extends State<Home> {
   }
 
   Widget _adminDashboard() {
-    if (loading) return const Center(child: CircularProgressIndicator());
+    if (loading) return const DashboardSkeleton();
     final total = equipment.fold<int>(0, (n, e) => n + (e['total'] as int));
     final available = equipment.fold<int>(
       0,
@@ -1482,7 +1470,7 @@ class _HomeState extends State<Home> {
   void _openLeaderboard() {
     final future = api.get('/leaderboard');
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => LeaderboardPage(future: future)),
+      appSlideRoute(builder: (context) => LeaderboardPage(future: future)),
     );
   }
 
@@ -1774,8 +1762,7 @@ class _HomeState extends State<Home> {
       );
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not load item: $e')));
+        showAppNotice(context, 'Could not load item: $e', isError: true);
     }
   }
 
@@ -2000,9 +1987,7 @@ class _HomeState extends State<Home> {
         if (mounted) await _addUnits(created, firstScan: true);
       } catch (e) {
         if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not create product: $e')),
-          );
+          showAppNotice(context, 'Could not create product: $e', isError: true);
       } finally {
         name.dispose();
         category.dispose();
@@ -2085,14 +2070,10 @@ class _HomeState extends State<Home> {
         });
       }
       await load();
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Product updated.')));
+      if (mounted) showAppNotice(context, 'Product updated.');
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not save product: $e')));
+        showAppNotice(context, 'Could not save product: $e', isError: true);
     } finally {
       id.dispose();
       name.dispose();
@@ -2143,8 +2124,8 @@ class _HomeState extends State<Home> {
             false;
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Item not added: $e')));
+        await showAppNotice(context, 'Item not added: $e', isError: true);
+        if (!mounted) return;
         scanNext =
             await showDialog<bool>(
               context: context,
@@ -2192,14 +2173,10 @@ class _HomeState extends State<Home> {
     try {
       await api.delete('/equipment/${Uri.encodeComponent(product['id'])}');
       await load();
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Product deleted.')));
+      if (mounted) showAppNotice(context, 'Product deleted.');
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not delete product: $e')));
+        showAppNotice(context, 'Could not delete product: $e', isError: true);
     }
   }
 
@@ -2241,8 +2218,10 @@ class _HomeState extends State<Home> {
     final bytes = await photo.readAsBytes();
     if (bytes.length > 1000000) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Choose an image smaller than 1 MB.')),
+        showAppNotice(
+          context,
+          'Choose an image smaller than 1 MB.',
+          isError: true,
         );
       return;
     }
@@ -2254,8 +2233,10 @@ class _HomeState extends State<Home> {
       await load();
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save product photo: $e')),
+        showAppNotice(
+          context,
+          'Could not save product photo: $e',
+          isError: true,
         );
     }
   }
@@ -2311,14 +2292,11 @@ class _HomeState extends State<Home> {
                                       await load();
                                     } catch (e) {
                                       if (mounted)
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Status update failed: $e',
-                                                ),
-                                              ),
-                                            );
+                                        showAppNotice(
+                                          context,
+                                          'Status update failed: $e',
+                                          isError: true,
+                                        );
                                     }
                                   },
                           ),
@@ -2344,8 +2322,10 @@ class _HomeState extends State<Home> {
       );
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load product units: $e')),
+        showAppNotice(
+          context,
+          'Could not load product units: $e',
+          isError: true,
         );
     }
   }
@@ -2653,8 +2633,10 @@ class _HomeState extends State<Home> {
       widget.onLogout();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not delete account: $error')),
+        showAppNotice(
+          context,
+          'Could not delete account: $error',
+          isError: true,
         );
       }
     } finally {
@@ -2715,9 +2697,7 @@ class _HomeState extends State<Home> {
     } catch (e) {
       await SessionStore().clearIconChangeHold();
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not change app icon: $e')),
-        );
+        showAppNotice(context, 'Could not change app icon: $e', isError: true);
     }
   }
 

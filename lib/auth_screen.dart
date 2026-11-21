@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'main.dart' show api;
 import 'app_palette.dart';
+import 'app_notice.dart';
 import 'auth_policy_sheet.dart';
 import 'landing_art.dart';
 import 'student_programs.dart';
@@ -1006,9 +1007,8 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _social(String label, Widget icon) => SizedBox(
     height: 44,
     child: OutlinedButton.icon(
-      onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$label sign-in is not configured.')),
-      ),
+      onPressed: () =>
+          showAppNotice(context, '$label sign-in is not configured.'),
       style: OutlinedButton.styleFrom(
         foregroundColor: _ink,
         side: const BorderSide(color: _line),

@@ -1,11 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ngiga/app_notice.dart';
 import 'package:ngiga/auth_screen.dart';
 import 'package:ngiga/app_slide_route.dart';
 import 'package:ngiga/auth_policy_sheet.dart';
 import 'package:ngiga/session_store.dart';
 import 'package:ngiga/main.dart' show api;
 import 'package:ngiga/notification_page.dart';
+import 'package:ngiga/leaderboard_page.dart';
+import 'package:ngiga/skeleton_loading.dart';
 import 'package:ngiga/student_profile_editor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -112,6 +117,60 @@ void main() {
     expect(find.text('Destination'), findsOneWidget);
     await tester.pumpAndSettle();
     expect(find.text('Destination'), findsNothing);
+  });
+
+  testWidgets('leaderboard shows skeletons until borrowers load', (
+    tester,
+  ) async {
+    final response = Completer<dynamic>();
+    await tester.pumpWidget(
+      MaterialApp(home: LeaderboardPage(future: response.future)),
+    );
+    expect(find.byType(LeaderboardSkeleton), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    response.complete([
+      {
+        'name': 'Student One',
+        'program': 'Computer Science',
+        'year_level': '1st Year',
+        'section': 'A1',
+        'borrow_count': 3,
+      },
+    ]);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(LeaderboardSkeleton), findsNothing);
+    expect(find.text('Student One'), findsOneWidget);
+  });
+
+  testWidgets('app messages appear in a dismissible popup', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showAppNotice(
+                context,
+                'Borrowing requires an active internet connection.',
+                isError: true,
+              ),
+              child: const Text('Borrow'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Borrow'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(
+      find.text('Borrowing requires an active internet connection.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
   });
 
   test('icon switch keeps the session until sign out', () async {

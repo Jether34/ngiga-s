@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_palette.dart';
+import 'skeleton_loading.dart';
 
 class LeaderboardPage extends StatelessWidget {
   const LeaderboardPage({super.key, required this.future});
@@ -40,7 +41,7 @@ class LeaderboardPage extends StatelessWidget {
                   future: future,
                   builder: (context, snapshot) {
                     if (!snapshot.hasData && !snapshot.hasError) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const LeaderboardSkeleton();
                     }
                     if (snapshot.hasError) {
                       return Center(

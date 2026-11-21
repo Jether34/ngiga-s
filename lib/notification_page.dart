@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_palette.dart';
+import 'app_notice.dart';
 import 'header_haze.dart';
 import 'main.dart' show api;
 
@@ -52,8 +53,10 @@ class _NotificationPageState extends State<NotificationPage> {
       widget.onRead('${item['id']}');
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not mark notification read: $e')),
+        showAppNotice(
+          context,
+          'Could not mark notification read: $e',
+          isError: true,
         );
     }
   }
