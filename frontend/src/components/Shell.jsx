@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   LogOut,
@@ -23,9 +23,12 @@ export function Shell({
   notify,
   products,
   loans,
+  helpTipIndex,
+  setHelpTipIndex,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const updateHelpTipIndex = useCallback((index) => setHelpTipIndex(role, index), [role, setHelpTipIndex]);
   const notificationRef = useRef(null);
   const notificationButtonRef = useRef(null);
   const links = role === "ADMIN" ? adminLinks : studentLinks;
@@ -125,6 +128,8 @@ export function Shell({
           <HelpCarousel
             key={role}
             role={role}
+            activeIndex={helpTipIndex}
+            setActiveIndex={updateHelpTipIndex}
             navigate={(page) => {
               navigate(prefix + "/" + page);
               setMenuOpen(false);

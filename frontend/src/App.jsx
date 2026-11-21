@@ -102,6 +102,10 @@ function App() {
   const toastTimer = useRef(null);
   const toastExitTimer = useRef(null);
   const [session, setSessionState] = useState(readDemoSession);
+  const [helpTipIndexes, setHelpTipIndexes] = useState({ ADMIN: 0, STUDENT: 0 });
+  const setHelpTipIndex = useCallback((role, index) => {
+    setHelpTipIndexes((current) => ({ ...current, [role]: index }));
+  }, []);
   const [avatar, setAvatar] = useState(() => readAvatar(readDemoSession()?.schoolEmail));
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -298,6 +302,8 @@ function App() {
           notify={notify}
           products={data.products}
           loans={data.loans}
+          helpTipIndex={helpTipIndexes.STUDENT}
+          setHelpTipIndex={setHelpTipIndex}
         >
           {child}
         </Shell>
@@ -366,6 +372,8 @@ function App() {
           notify={notify}
           products={data.products}
           loans={data.loans}
+          helpTipIndex={helpTipIndexes.ADMIN}
+          setHelpTipIndex={setHelpTipIndex}
         >
           {child}
         </Shell>

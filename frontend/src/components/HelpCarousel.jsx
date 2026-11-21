@@ -54,17 +54,16 @@ function useReducedMotion() {
   return reduced;
 }
 
-export function HelpCarousel({ role, navigate }) {
+export function HelpCarousel({ role, navigate, activeIndex, setActiveIndex }) {
   const tips = role === "ADMIN" ? adminTips : studentTips;
   const reducedMotion = useReducedMotion();
-  const [activeIndex, setActiveIndex] = useState(0);
   const [phase, setPhase] = useState("visible");
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [timerVersion, setTimerVersion] = useState(0);
   const paused = hovered || focused;
   const pausedRef = useRef(paused);
-  const remainingRef = useRef(readingDuration(tips[0]));
+  const remainingRef = useRef(readingDuration(tips[activeIndex]));
   const pendingIndexRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -107,7 +106,7 @@ export function HelpCarousel({ role, navigate }) {
       setPhase("entering");
     }, transitionMs);
     return () => window.clearTimeout(timer);
-  }, [activeIndex, phase, paused, reducedMotion, timerVersion, tips]);
+  }, [activeIndex, phase, paused, reducedMotion, setActiveIndex, timerVersion, tips]);
 
   useEffect(() => {
     if (phase !== "entering") return undefined;
