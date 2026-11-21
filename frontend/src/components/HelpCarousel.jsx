@@ -154,7 +154,8 @@ export function HelpCarousel({ role, navigate }) {
           {tip.action} <ArrowRight size={16} aria-hidden="true" />
         </button>
       </div>
-      <div className="help-dots" role="group" aria-label="Choose a help tip">
+      <div className="help-dots" role="group" aria-label="Choose a help tip" style={{ "--active-index": activeIndex }}>
+        <span className="help-indicator" aria-hidden="true" />
         {tips.map((item, index) => (
           <button
             key={item.title}

@@ -1506,6 +1506,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
           </select>
           <input
             type="date"
+            className={date ? undefined : "date-empty"}
             value={date}
             onChange={(e) => setDate(e.target.value)}
             aria-label="Transaction date"
