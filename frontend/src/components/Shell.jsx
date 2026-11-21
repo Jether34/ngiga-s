@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   LogOut,
-  ArrowRight,
   ChevronRight,
   X,
   Menu,
-  Sparkles,
   Boxes,
 } from "lucide-react";
 import { SCHOOL_NAME } from "../data/fixtures";
 import { Badge, IconButton } from "../components/ui";
 import { studentLinks, adminLinks } from "../utils/domain";
+import { HelpCarousel } from "./HelpCarousel";
 
 export function Shell({
   role,
@@ -98,21 +97,14 @@ export function Shell({
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-help">
-            <span>
-              <Sparkles size={18} />
-            </span>
-            <strong>Need a hand?</strong>
-            <p>Scan a unit code or explore the equipment catalog.</p>
-            <button
-              onClick={() => {
-                navigate(prefix + "/scan");
-                setMenuOpen(false);
-              }}
-            >
-              Start scanning <ArrowRight size={15} />
-            </button>
-          </div>
+          <HelpCarousel
+            key={role}
+            role={role}
+            navigate={(page) => {
+              navigate(prefix + "/" + page);
+              setMenuOpen(false);
+            }}
+          />
           <button
             className="sidebar-profile"
             onClick={() => navigate(prefix + "/settings")}

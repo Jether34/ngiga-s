@@ -24,6 +24,14 @@
   --selected-text: #0B3D2E;
   --table-row-line: #F7F9F6;
   --camera-gradient: radial-gradient(circle at center, #145A43, #0B3D2E);
+  --help-background: linear-gradient(145deg, #F5F8F2, #E8F0E8);
+  --help-border: #BED6C5;
+  --help-heading: #0B3D2E;
+  --help-copy: #334D3D;
+  --help-accent: #145A43;
+  --help-dot: #607D69;
+  --help-dot-active: #145A43;
+  --help-shadow: 0 14px 32px rgba(3, 28, 16, 0.18);
   --primary-gradient: linear-gradient(135deg, #0B3D2E, #145A43, #2F8F6F);
   --dark-gradient: linear-gradient(135deg, #0B3D2E, #145A43);
   --accent-gradient: linear-gradient(135deg, #145A43, #2B8566);
@@ -53,6 +61,14 @@
   --selected-text: #F4F7F3;
   --table-row-line: #395247;
   --camera-gradient: radial-gradient(circle at center, #2F8F6F, #0B3D2E);
+  --help-background: linear-gradient(145deg, #28503D, #1B3B2E);
+  --help-border: rgba(215, 199, 161, 0.32);
+  --help-heading: #F4F7F3;
+  --help-copy: #DCEBE1;
+  --help-accent: #E5D6B4;
+  --help-dot: #B7C9BA;
+  --help-dot-active: #D7C7A1;
+  --help-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
   --shadow: 0 14px 38px rgba(0, 0, 0, 0.24);
 }
 html, body { background: var(--cream); color: var(--ink); }
@@ -1303,6 +1319,7 @@ select:disabled {
   top: 0;
   height: 100vh;
   z-index: 30;
+  overflow-y: auto;
 }
 .sidebar-top {
   padding: 0 10px 38px;
@@ -1361,33 +1378,104 @@ select:disabled {
   margin-top: auto;
 }
 .sidebar-help {
-  background: linear-gradient(140deg, rgba(215, 199, 161, 0.20), rgba(47, 143, 111, 0.23));
+  display: flex;
+  flex-direction: column;
+  min-height: 184px;
+  background: var(--help-background);
+  border: 1px solid var(--help-border);
   border-radius: 15px;
-  padding: 18px;
+  padding: 16px;
   margin: 0 4px 18px;
+  color: var(--help-heading);
+  box-shadow: var(--help-shadow);
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
-.sidebar-help > span {
-  display: inline-flex;
-  color: var(--beige);
-  margin-bottom: 11px;
+.help-slide {
+  flex: 1;
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 380ms ease, transform 380ms var(--motion-ease);
 }
-.sidebar-help strong {
-  font-size: 0.78rem;
+.help-slide-exiting {
+  opacity: 0;
+  transform: translateX(-7px);
+}
+.help-slide-entering {
+  opacity: 0;
+  transform: translateX(7px);
+}
+.help-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 25px;
+}
+.help-heading svg {
+  flex: none;
+  color: var(--help-accent);
+}
+.help-heading strong {
+  font-size: 0.79rem;
+  font-weight: 800;
+  line-height: 1.25;
 }
 .sidebar-help p {
-  font-size: 0.68rem;
-  margin: 5px 0 10px;
-  color: #DCEBE1;
+  font-size: 0.69rem;
+  margin: 13px 0 12px;
+  color: var(--help-copy);
   line-height: 1.5;
 }
-.sidebar-help button {
-  display: flex;
-  gap: 5px;
+.sidebar-help .help-action {
+  display: inline-flex;
+  gap: 7px;
   align-items: center;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 800;
-  color: var(--beige);
+  color: var(--help-accent);
   padding: 0;
+  text-align: left;
+}
+.help-action:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.help-action svg {
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+.help-action:hover svg {
+  transform: translateX(3px);
+}
+.help-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  margin-top: 13px;
+}
+.sidebar-help .help-dot {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+}
+.help-dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--help-dot);
+  transition: width 300ms var(--motion-ease), background-color 300ms ease, transform 300ms ease;
+}
+.help-dot:hover::before {
+  transform: scale(1.25);
+}
+.help-dot.active::before {
+  width: 17px;
+  background: var(--help-dot-active);
+}
+.sidebar-help button:focus-visible {
+  outline-color: var(--help-accent);
 }
 .sidebar-profile {
   width: 100%;
@@ -2697,7 +2785,8 @@ select:disabled {
     min-width: 210px;
   }
   .sidebar-help {
-    display: none;
+    min-height: 215px;
+    padding: 14px;
   }
   .content {
     padding: 25px 24px 45px;
@@ -2770,6 +2859,10 @@ select:disabled {
     width: 260px;
     height: 100dvh;
     box-shadow: 0 0 30px rgba(11, 61, 46, 0.13);
+  }
+  .sidebar-help {
+    min-height: 184px;
+    padding: 16px;
   }
   .sidebar.open {
     transform: translateX(0);
