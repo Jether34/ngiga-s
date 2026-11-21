@@ -1,0 +1,55 @@
+name: ngiga-stockroom
+
+services:
+  database:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: stockroom
+      MYSQL_USER: stockroom_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+    volumes:
+      - stockroom_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -uroot --protocol=socket --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: backend/cpp/Dockerfile
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "update-ca-certificates >/dev/null && exec /usr/local/bin/stockroom_api"]
+    environment:
+      PORT: 8000
+      MYSQL_HOST: database
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: stockroom
+      MYSQL_USER: stockroom_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      ADMIN_NAME: Laboratory Administrator
+      ADMIN_ID: ADMIN-001
+      SMTP_USERNAME: ${SMTP_USERNAME:?Set SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://pns-sysnnova.cloud/stockroom-api}
+    volumes:
+      - /opt/ngiga-stockroom/mysql-ca.pem:/usr/local/share/ca-certificates/mysql-ca.crt:ro
+    ports:
+      - "127.0.0.1:8765:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  stockroom_data:

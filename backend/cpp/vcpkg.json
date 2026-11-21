@@ -1,0 +1,9 @@
+{
+  "name": "stockroom-api",
+  "version-string": "1.0.0",
+  "dependencies": [
+    { "name": "drogon", "features": ["mysql"] },
+    "jwt-cpp",
+    "nlohmann-json"
+  ]
+}
