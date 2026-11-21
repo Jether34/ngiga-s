@@ -9,6 +9,8 @@
 #include <regex>
 #include <algorithm>
 #include <random>
+#include <sstream>
+#include <iomanip>
 
 namespace stockroom {
 namespace {
@@ -35,6 +37,14 @@ std::string clientIp(const drogon::HttpRequestPtr &request) {
     const auto proxyIp = request->getHeader("x-real-ip");
     if (std::regex_match(proxyIp, std::regex(R"([0-9a-fA-F:.]{3,45})"))) return proxyIp;
     return request->peerAddr().toIp();
+}
+
+std::string resetToken() {
+    std::random_device entropy;
+    std::ostringstream out;
+    for (int i = 0; i < 32; ++i)
+        out << std::hex << std::setw(2) << std::setfill('0') << (entropy() & 0xff);
+    return out.str();
 }
 
 Json::Value sessionFor(const std::string &id, const std::string &email,
@@ -301,6 +311,103 @@ void registerAuthRoutes() {
                     rows[0]["name"].as<std::string>(), rows[0]["account_id"].as<std::string>(),
                     rows[0]["role"].as<std::string>())));
             } catch (...) { callback(error(k500InternalServerError, "Unable to verify email")); }
+        }, {Post});
+
+    app().registerHandler(
+        "/auth/password-reset/page",
+        [](const HttpRequestPtr &, Callback &&callback) {
+            auto response = drogon::HttpResponse::newHttpResponse();
+            response->setContentTypeCode(drogon::CT_TEXT_HTML);
+            response->addHeader("Referrer-Policy", "no-referrer");
+            response->addHeader("Cache-Control", "no-store");
+            response->setBody(R"HTML(<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reset NGIGA password</title><style>body{font-family:system-ui,sans-serif;background:linear-gradient(#ddebdc,#fff 45%);min-height:100vh;margin:0;display:grid;place-items:center;color:#153f34}main{box-sizing:border-box;width:min(420px,calc(100% - 32px));background:#fff;border:1px solid #d9e7df;border-radius:22px;box-shadow:0 16px 46px #164d3022;padding:28px}h1{margin:0 0 8px;font-size:25px}p{color:#597469;line-height:1.5}label{display:block;margin:18px 0 7px;font-size:14px;font-weight:600}input{box-sizing:border-box;width:100%;height:46px;border:1px solid #c8d9ce;border-radius:10px;padding:10px;font-size:16px}button{width:100%;height:46px;margin-top:22px;border:0;border-radius:10px;background:#145a43;color:#fff;font-weight:700;font-size:15px}#message{min-height:22px}</style></head><body><main><h1>Set a new password</h1><p>Use a password of 12 to 72 characters. This link works once and expires after 10 minutes.</p><form id="reset"><label for="password">New password</label><input id="password" type="password" minlength="12" maxlength="72" required autocomplete="new-password"><label for="confirm">Confirm password</label><input id="confirm" type="password" minlength="12" maxlength="72" required autocomplete="new-password"><button type="submit">Change password</button></form><p id="message" role="status"></p></main><script>const form=document.getElementById('reset'),message=document.getElementById('message'),params=new URLSearchParams(location.search);form.addEventListener('submit',async event=>{event.preventDefault();const password=document.getElementById('password').value;if(password!==document.getElementById('confirm').value){message.textContent='Passwords do not match.';return}const button=form.querySelector('button');button.disabled=true;try{const response=await fetch(location.pathname.replace(/\/page$/,'/confirm'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:params.get('id'),token:params.get('token'),new_password:password})});const result=await response.json();if(!response.ok)throw Error(result.detail||'Could not change password.');form.hidden=true;message.textContent='Password changed. Return to the NGIGA app and sign in with your new password.'}catch(error){message.textContent=error.message;button.disabled=false}});</script></body></html>)HTML");
+            callback(response);
+        }, {Get});
+
+    app().registerHandler(
+        "/auth/password-reset/request",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            const auto body = request->getJsonObject();
+            auto email = body ? field(*body, "email") : "";
+            email.erase(0, email.find_first_not_of(" \t\r\n"));
+            email.erase(email.find_last_not_of(" \t\r\n") + 1);
+            if (!std::regex_match(email, std::regex(R"([^@\s]+@[^@\s]+\.[^@\s]+)"))) {
+                callback(error(k422UnprocessableEntity, "Enter a valid email address")); return;
+            }
+            try {
+                auto db = app().getDbClient();
+                const auto users = db->execSqlSync(
+                    "SELECT id,email FROM users WHERE lower(email)=lower(?) "
+                    "AND role='STUDENT' AND deleted_at IS NULL", email);
+                Json::Value result;
+                result["message"] = "If this email is registered, password change steps have been sent.";
+                if (!users.empty()) {
+                    const auto uid = users[0]["id"].as<std::string>();
+                    const auto recent = db->execSqlSync(
+                        "SELECT id FROM password_resets WHERE user_id=? AND consumed_at IS NULL "
+                        "AND created_at>UTC_TIMESTAMP(6)-INTERVAL 60 SECOND "
+                        "ORDER BY created_at DESC LIMIT 1", uid);
+                    if (recent.empty()) {
+                        const auto token = resetToken();
+                        const auto id = drogon::utils::getUuid();
+                        db->execSqlSync(
+                            "INSERT INTO password_resets(id,user_id,code_hash,created_at,expires_at) "
+                            "VALUES(?,?,?,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6)+INTERVAL 10 MINUTE)",
+                            id, uid, bcrypt::generateHash(token, 12));
+                        const char *configured = std::getenv("PUBLIC_API_URL");
+                        const std::string base = configured && *configured ? configured :
+                            "https://pns-sysnnova.cloud/stockroom-api";
+                        if (!sendEmail(users[0]["email"].as<std::string>(),
+                                       "Your NGIGA password reset link",
+                                       "Open this link to change your NGIGA Stockroom password:\n" +
+                                       base + "/auth/password-reset/page?id=" + id + "&token=" + token +
+                                       "\n\nThe link expires in 10 minutes and works once. If you did not request it, ignore this email.")) {
+                            db->execSqlSync("DELETE FROM password_resets WHERE id=?", id);
+                            callback(error(k503ServiceUnavailable, "Could not send the reset email. Try again shortly."));
+                            return;
+                        }
+                    }
+                }
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to request password reset")); }
+        }, {Post});
+
+    app().registerHandler(
+        "/auth/password-reset/confirm",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            const auto body = request->getJsonObject();
+            const auto token = body ? field(*body, "token") : "";
+            const auto password = body ? field(*body, "new_password") : "";
+            if (!std::regex_match(token, std::regex(R"([0-9a-f]{64})")) ||
+                password.size() < 12 || password.size() > 72) {
+                callback(error(k422UnprocessableEntity, "Invalid reset link or password; use 12 to 72 characters"));
+                return;
+            }
+            try {
+                auto db = app().getDbClient();
+                const auto rows = db->execSqlSync(
+                    "SELECT p.id,p.user_id,p.code_hash,p.attempts,"
+                    "p.expires_at>UTC_TIMESTAMP(6) AS valid "
+                    "FROM password_resets p JOIN users u ON u.id=p.user_id "
+                    "WHERE p.id=? AND p.consumed_at IS NULL AND u.deleted_at IS NULL",
+                    field(*body, "id"));
+                if (rows.empty() || rows[0]["valid"].as<int>() != 1 ||
+                    rows[0]["attempts"].as<int>() >= 5) {
+                    callback(error(k410Gone, "Reset link expired. Request a new one.")); return;
+                }
+                const auto id = rows[0]["id"].as<std::string>();
+                db->execSqlSync("UPDATE password_resets SET attempts=attempts+1 WHERE id=?", id);
+                if (!bcrypt::validatePassword(token, rows[0]["code_hash"].as<std::string>())) {
+                    callback(error(k403Forbidden, "Invalid reset link")); return;
+                }
+                db->execSqlSync("UPDATE users SET password_hash=? WHERE id=?",
+                                bcrypt::generateHash(password, 12),
+                                rows[0]["user_id"].as<std::string>());
+                db->execSqlSync("UPDATE password_resets SET consumed_at=UTC_TIMESTAMP(6) WHERE id=?", id);
+                Json::Value result;
+                result["reset"] = true;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to reset password")); }
         }, {Post});
 
     app().registerHandler(

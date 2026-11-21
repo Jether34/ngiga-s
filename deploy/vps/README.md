@@ -6,6 +6,8 @@ MySQL is reachable only on the project's private Docker network. The API trusts 
 
 The deployment uses a private `.env` file beside `compose.yml`. Supply `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `SECRET_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SMTP_USERNAME`, and `SMTP_PASSWORD`. Use a Gmail app password for SMTP and keep this file out of Git.
 
+Password reset emails link to the public API's `/auth/password-reset/page` form. Set `PUBLIC_API_URL` if the HTTPS API address differs from `https://pns-sysnnova.cloud/stockroom-api`. Reset links expire after 10 minutes and can be used once.
+
 Deploy from `/opt/ngiga-stockroom/deploy/vps` on the VPS:
 
 ```sh

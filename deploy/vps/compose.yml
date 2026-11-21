@@ -37,6 +37,7 @@ services:
       ADMIN_ID: ADMIN-001
       SMTP_USERNAME: ${SMTP_USERNAME:?Set SMTP_USERNAME}
       SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://pns-sysnnova.cloud/stockroom-api}
     volumes:
       - /opt/ngiga-stockroom/mysql-ca.pem:/usr/local/share/ca-certificates/mysql-ca.crt:ro
     ports:

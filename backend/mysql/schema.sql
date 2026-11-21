@@ -40,6 +40,18 @@ CREATE TABLE IF NOT EXISTS trusted_login_ips (
   CONSTRAINT fk_trusted_ip_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS password_resets (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  code_hash VARCHAR(255) NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  expires_at DATETIME(6) NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  consumed_at DATETIME(6) NULL,
+  CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id),
+  INDEX idx_password_reset_user_time (user_id, created_at)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS equipment (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(160) NOT NULL,

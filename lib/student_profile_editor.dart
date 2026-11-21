@@ -65,119 +65,121 @@ class _StudentProfileEditorState extends State<StudentProfileEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Edit profile')),
-    body: pageWithHaze(
-      ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const Text(
-            'Your information',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppPalette.deep,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Details provided at sign up. Passwords are never shown here.',
-            style: TextStyle(color: AppPalette.muted),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: name,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Full name',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Email address',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: phone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: 'Phone number',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Year level',
-              border: OutlineInputBorder(),
-              suffixIcon: Icon(Icons.lock_outline),
-            ),
-            child: Text('${api.user['year_level'] ?? ''}'),
-          ),
-          const SizedBox(height: 12),
-          InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Program',
-              border: OutlineInputBorder(),
-              suffixIcon: Icon(Icons.lock_outline),
-            ),
-            child: Text('${api.user['program'] ?? ''}'),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Student ID',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.lock_outline),
-                  ),
-                  child: Text('${api.user['account_id'] ?? ''}'),
-                ),
+  Widget build(BuildContext context) => PageGradientBackground(
+    child: Scaffold(
+      appBar: AppBar(title: const Text('Edit profile')),
+      body: pageWithHaze(
+        ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text(
+              'Your information',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppPalette.deep,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: section,
-                  decoration: const InputDecoration(
-                    labelText: 'Section / block',
-                    border: OutlineInputBorder(),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Details provided at sign up. Passwords are never shown here.',
+              style: TextStyle(color: AppPalette.muted),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: name,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Full name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone number',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Year level',
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.lock_outline),
+              ),
+              child: Text('${api.user['year_level'] ?? ''}'),
+            ),
+            const SizedBox(height: 12),
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Program',
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.lock_outline),
+              ),
+              child: Text('${api.user['program'] ?? ''}'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Student ID',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.lock_outline),
+                    ),
+                    child: Text('${api.user['account_id'] ?? ''}'),
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: section,
+                    decoration: const InputDecoration(
+                      labelText: 'Section / block',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: address,
+              decoration: const InputDecoration(
+                labelText: 'Home address',
+                border: OutlineInputBorder(),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: address,
-            decoration: const InputDecoration(
-              labelText: 'Home address',
-              border: OutlineInputBorder(),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Terms and Privacy accepted: $termsAcceptedDate',
-            style: const TextStyle(color: AppPalette.muted),
-          ),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 12),
+            Text(
+              'Terms and Privacy accepted: $termsAcceptedDate',
+              style: const TextStyle(color: AppPalette.muted),
             ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: saving ? null : save,
-            child: Text(saving ? 'Saving...' : 'Save changes'),
-          ),
-        ],
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(error!, style: const TextStyle(color: Colors.red)),
+              ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: saving ? null : save,
+              child: Text(saving ? 'Saving...' : 'Save changes'),
+            ),
+          ],
+        ),
       ),
     ),
   );

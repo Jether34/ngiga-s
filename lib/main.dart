@@ -182,6 +182,7 @@ class _RootState extends State<Root> {
         api.user = Map<String, dynamic>.from(await api.get('/me'));
     } catch (_) {
       api.token = '';
+      await sessions.clear();
     }
     if (mounted) setState(() => ready = true);
   }
@@ -2693,10 +2694,12 @@ class _HomeState extends State<Home> {
 
   Future<void> _setAppIcon(String choice) async {
     try {
+      await SessionStore().holdForIconChange(api.token);
       await const MethodChannel('stockroom/app_icon')
           .invokeMethod<void>('setIcon', {'icon': choice});
       if (mounted) setState(() => iconVariant = choice);
     } catch (e) {
+      await SessionStore().clearIconChangeHold();
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not change app icon: $e')),

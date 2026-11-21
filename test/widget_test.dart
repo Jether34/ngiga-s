@@ -69,6 +69,38 @@ void main() {
     expect(await sessions.restore(), isEmpty);
   });
 
+  test('icon switch keeps the session until sign out', () async {
+    SharedPreferences.setMockInitialValues({});
+    final sessions = SessionStore();
+    await sessions.save('temporary-token', remember: false);
+    await sessions.holdForIconChange('temporary-token');
+    expect(await sessions.restore(), 'temporary-token');
+    expect(await sessions.restore(), 'temporary-token');
+    await sessions.clear();
+    expect(await sessions.restore(), isEmpty);
+  });
+
+  testWidgets('forgot password opens the email reset request', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: AuthScreen(onLogin: _noop)),
+    );
+    await tester.tap(find.text('Log In'));
+    await tester.pumpAndSettle();
+    final loginField = find.widgetWithText(TextField, 'Enter Your Email');
+    expect(tester.getSize(loginField).height, 43);
+    await tester.tap(find.text('Forgot Password?'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset password'), findsOneWidget);
+    expect(find.text('Send reset link'), findsOneWidget);
+    expect(
+      tester
+          .getSize(find.widgetWithText(TextField, 'Your email address'))
+          .height,
+      43,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Terms and Privacy use the detailed bottom sheets', (
     tester,
   ) async {

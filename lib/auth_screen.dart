@@ -24,7 +24,7 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-enum _Page { welcome, login, signup, verify }
+enum _Page { welcome, login, signup, verify, resetRequest, resetSent }
 
 class _AuthScreenState extends State<AuthScreen> {
   _Page page = _Page.welcome;
@@ -37,6 +37,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final password = TextEditingController();
   final confirm = TextEditingController();
   final verificationCode = TextEditingController();
+  final resetEmail = TextEditingController();
+  final verificationFocus = FocusNode();
   String challengeId = '', verificationEmail = '';
   String? year, program, error;
   bool remember = false,
@@ -76,9 +78,11 @@ class _AuthScreenState extends State<AuthScreen> {
       password,
       confirm,
       verificationCode,
+      resetEmail,
     ]) {
       controller.dispose();
     }
+    verificationFocus.dispose();
     super.dispose();
   }
 
@@ -88,6 +92,12 @@ class _AuthScreenState extends State<AuthScreen> {
     password.clear();
     confirm.clear();
   });
+
+  void _startPasswordReset() {
+    resetEmail.text = email.text.trim();
+    verificationCode.clear();
+    _open(_Page.resetRequest);
+  }
 
   Future<void> _submit() async {
     if (busy) return;
@@ -156,6 +166,15 @@ class _AuthScreenState extends State<AuthScreen> {
         api.token = result['token'];
         api.user = Map<String, dynamic>.from(result['user']);
         widget.onLogin(remember);
+      } else if (page == _Page.resetRequest) {
+        if (!resetEmail.text.trim().contains('@')) {
+          throw Exception('Enter the email used for your account.');
+        }
+        await api.post('/auth/password-reset/request', {
+          'email': resetEmail.text.trim(),
+        });
+        if (!mounted) return;
+        _open(_Page.resetSent);
       } else {
         final result = await api.post('/auth/login', {
           'login_type': phoneTab ? 'phone' : 'email',
@@ -178,6 +197,10 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+        if (page == _Page.verify) {
+          verificationCode.clear();
+          verificationFocus.requestFocus();
+        }
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -382,12 +405,15 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ),
                     const SizedBox(height: 13),
-                    TextField(
-                      autofocus: title == 'Program',
-                      onChanged: (value) => update(() => query = value),
-                      decoration: _decoration(
-                        'Search ${title.toLowerCase()}',
-                        Icons.search,
+                    SizedBox(
+                      height: 43,
+                      child: TextField(
+                        autofocus: title == 'Program',
+                        onChanged: (value) => update(() => query = value),
+                        decoration: _decoration(
+                          'Search ${title.toLowerCase()}',
+                          Icons.search,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -750,13 +776,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Contact your administrator to reset your password.',
-                  ),
-                ),
-              ),
+              onPressed: _startPasswordReset,
               child: const Text(
                 'Forgot Password?',
                 style: TextStyle(fontSize: 11, color: AppPalette.primary),
@@ -837,6 +857,69 @@ class _AuthScreenState extends State<AuthScreen> {
     ),
   );
 
+  Widget _codeBoxes() => SizedBox(
+    height: 58,
+    child: Stack(
+      children: [
+        Row(
+          children: List.generate(
+            6,
+            (index) => Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: index == 5 ? 0 : 7),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(
+                      color: verificationCode.text.length == index
+                          ? _accent
+                          : _line,
+                      width: verificationCode.text.length == index ? 1.5 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    index < verificationCode.text.length
+                        ? verificationCode.text[index]
+                        : '',
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.w700,
+                      color: _ink,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Opacity(
+            opacity: 0.01,
+            child: TextField(
+              focusNode: verificationFocus,
+              controller: verificationCode,
+              autofocus: true,
+              maxLength: 6,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                counterText: '',
+                border: InputBorder.none,
+              ),
+              onChanged: (value) {
+                setState(() => error = null);
+                if (value.length == 6 && !busy) _submit();
+              },
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _verify() => Padding(
     padding: const EdgeInsets.fromLTRB(24, 72, 24, 30),
     child: Column(
@@ -848,28 +931,70 @@ class _AuthScreenState extends State<AuthScreen> {
           'Enter the six-digit code sent to\n$verificationEmail',
         ),
         const SizedBox(height: 32),
-        TextField(
-          controller: verificationCode,
-          autofocus: true,
-          maxLength: 6,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 25,
-            letterSpacing: 12,
-            fontWeight: FontWeight.bold,
-          ),
-          decoration: _decoration('000000', Icons.pin_outlined),
-        ),
+        _codeBoxes(),
         const Text(
           'The code expires in 10 minutes. Five attempts are allowed.',
           style: TextStyle(color: _muted, fontSize: 12),
         ),
         if (error != null) _error(),
-        const SizedBox(height: 20),
-        _button(busy ? 'Verifying...' : 'Verify and continue', _submit),
+        if (busy)
+          const Padding(
+            padding: EdgeInsets.only(top: 18),
+            child: CircularProgressIndicator(),
+          ),
         const SizedBox(height: 18),
+        TextButton(
+          onPressed: () => _open(_Page.login),
+          child: const Text('Back to sign in'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _resetRequest() => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 72, 24, 30),
+    child: Column(
+      children: [
+        const Icon(Icons.lock_reset_outlined, size: 64, color: _accent),
+        const SizedBox(height: 24),
+        _heading(
+          'Reset password',
+          'Enter your account email to receive a secure password reset link.',
+        ),
+        const SizedBox(height: 30),
+        _input(
+          resetEmail,
+          'Your email address',
+          Icons.mail_outline,
+          keyboard: TextInputType.emailAddress,
+        ),
+        if (error != null) _error(),
+        const SizedBox(height: 20),
+        _button(busy ? 'Sending...' : 'Send reset link', _submit),
+        const SizedBox(height: 18),
+        TextButton(
+          onPressed: () => _open(_Page.login),
+          child: const Text('Back to sign in'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _resetSent() => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 72, 24, 30),
+    child: Column(
+      children: [
+        const Icon(Icons.mark_email_read_outlined, size: 58, color: _accent),
+        const SizedBox(height: 20),
+        _heading(
+          'Check your email',
+          'If ${resetEmail.text.trim()} has an account, we sent a link with password change steps. The link expires in 10 minutes.',
+        ),
+        const SizedBox(height: 18),
+        TextButton(
+          onPressed: _startPasswordReset,
+          child: const Text('Send another link'),
+        ),
         TextButton(
           onPressed: () => _open(_Page.login),
           child: const Text('Back to sign in'),
@@ -920,6 +1045,8 @@ class _AuthScreenState extends State<AuthScreen> {
                           _Page.login => _login(),
                           _Page.signup => _signup(),
                           _Page.verify => _verify(),
+                          _Page.resetRequest => _resetRequest(),
+                          _Page.resetSent => _resetSent(),
                         },
                       ),
                     ),
