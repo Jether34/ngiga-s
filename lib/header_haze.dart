@@ -29,14 +29,21 @@ class PageGradientBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Stack(
     children: [
-      const Positioned.fill(child: ColoredBox(color: Colors.white)),
-      const Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 390,
-        child: DecoratedBox(
-          decoration: BoxDecoration(gradient: AppPalette.pageGlow),
+      const Positioned.fill(
+        child: RepaintBoundary(
+          child: ColoredBox(
+            color: Colors.white,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                height: 390,
+                width: double.infinity,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(gradient: AppPalette.pageGlow),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
       Positioned.fill(child: child),

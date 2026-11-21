@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'auth_screen.dart';
 import 'app_palette.dart';
@@ -10,12 +10,12 @@ import 'notification_page.dart';
 import 'header_haze.dart';
 import 'leaderboard_page.dart';
 import 'session_store.dart';
+import 'receipt_export.dart';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
@@ -66,6 +66,15 @@ class LabApp extends StatelessWidget {
           statusBarBrightness: Brightness.light,
         ),
       ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _InstantPageTransitionsBuilder(),
+          TargetPlatform.iOS: _InstantPageTransitionsBuilder(),
+          TargetPlatform.windows: _InstantPageTransitionsBuilder(),
+          TargetPlatform.macOS: _InstantPageTransitionsBuilder(),
+          TargetPlatform.linux: _InstantPageTransitionsBuilder(),
+        },
+      ),
       useMaterial3: true,
       cardTheme: CardThemeData(
         color: Colors.white,
@@ -78,6 +87,19 @@ class LabApp extends StatelessWidget {
     ),
     home: const Root(),
   );
+}
+
+class _InstantPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _InstantPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
 }
 
 class Api {
@@ -115,9 +137,13 @@ class Api {
     return jsonDecode(r.body);
   }
 
-  Future<dynamic> delete(String path) async {
+  Future<dynamic> delete(String path, {Map<String, dynamic>? body}) async {
     final r = await http
-        .delete(Uri.parse('$base$path'), headers: headers)
+        .delete(
+          Uri.parse('$base$path'),
+          headers: headers,
+          body: body == null ? null : jsonEncode(body),
+        )
         .timeout(const Duration(seconds: 12));
     if (r.statusCode >= 400) throw Exception(_message(r));
     return jsonDecode(r.body);
@@ -197,6 +223,7 @@ class _HomeState extends State<Home> {
   String historyType = 'ALL';
   String historyEquipment = 'ALL';
   bool loading = true;
+  bool deletingAccount = false;
   int get unreadNotifications =>
       notifications.where((item) => item['is_read'] != true).length;
   String? err;
@@ -387,7 +414,10 @@ class _HomeState extends State<Home> {
       if (!mounted) return;
       final code = await Navigator.push<String>(
         context,
-        MaterialPageRoute(builder: (_) => const ScanPage()),
+        MaterialPageRoute(
+          builder: (_) =>
+              ScanPage(title: returning ? 'Scan to return' : 'Scan to borrow'),
+        ),
       );
       if (code == null || code.trim().isEmpty) return;
       if (returning) {
@@ -656,88 +686,11 @@ class _HomeState extends State<Home> {
         '${two(local.hour)}:${two(local.minute)}';
   }
 
-  Future<Uint8List> _pdfReceiptBytes(dynamic r) async {
-    final document = pw.Document();
-    final fields = _receiptFields(r);
-    document.addPage(
-      pw.Page(
-        build: (_) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(
-              'Stockroom loan receipt',
-              style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 18),
-            for (final entry in fields.entries) ...[
-              pw.Text(
-                entry.key,
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Text(entry.value),
-              pw.SizedBox(height: 8),
-            ],
-          ],
-        ),
-      ),
-    );
-    return document.save();
-  }
+  Future<Uint8List> _pdfReceiptBytes(dynamic r) =>
+      ReceiptExport.pdf(_receiptFields(r), Map<String, dynamic>.from(r as Map));
 
-  Future<Uint8List> _pngReceiptBytes(dynamic r) async {
-    const width = 1000.0;
-    const height = 1420.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawColor(Colors.white, BlendMode.src);
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 0, width, 180),
-      Paint()..color = AppPalette.primary,
-    );
-    void line(
-      String value,
-      double x,
-      double y,
-      double size,
-      Color color, {
-      FontWeight weight = FontWeight.normal,
-    }) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: value,
-          style: TextStyle(fontSize: size, color: color, fontWeight: weight),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 3,
-        ellipsis: '…',
-      )..layout(maxWidth: width - x - 64);
-      painter.paint(canvas, Offset(x, y));
-    }
-
-    line('STOCKROOM', 64, 52, 28, Colors.white, weight: FontWeight.bold);
-    line('Loan receipt', 64, 96, 40, Colors.white, weight: FontWeight.bold);
-    var y = 220.0;
-    for (final entry in _receiptFields(r).entries) {
-      line(
-        entry.key.toUpperCase(),
-        64,
-        y,
-        20,
-        AppPalette.muted,
-        weight: FontWeight.bold,
-      );
-      line(entry.value, 64, y + 34, 28, AppPalette.deep);
-      y += 102;
-    }
-    final image = await recorder.endRecording().toImage(
-      width.toInt(),
-      height.toInt(),
-    );
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    if (data == null) throw StateError('Could not create PNG receipt');
-    return data.buffer.asUint8List();
-  }
+  Future<Uint8List> _pngReceiptBytes(dynamic r) =>
+      ReceiptExport.png(_receiptFields(r), Map<String, dynamic>.from(r as Map));
 
   void _share(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
@@ -2440,6 +2393,15 @@ class _HomeState extends State<Home> {
       ),
       const SizedBox(height: 18),
       _settingsTile(
+        leading: const Icon(Icons.delete_outline, color: Color(0xffb4234a)),
+        title: const Text(
+          'Delete account',
+          style: TextStyle(color: Color(0xffb4234a)),
+        ),
+        subtitle: const Text('Remove your account and profile'),
+        onTap: _confirmDeleteAccount,
+      ),
+      _settingsTile(
         leading: const Icon(Icons.logout),
         title: const Text('Log out'),
         onTap: _confirmLogout,
@@ -2497,6 +2459,65 @@ class _HomeState extends State<Home> {
       ),
     );
     if (confirmed == true) widget.onLogout();
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    if (deletingAccount) return;
+    final password = TextEditingController();
+    final confirmedPassword = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Delete your account?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Your profile and sign-in details will be removed. Loan records needed for inventory history will remain. Return any active loans first.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: password,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Confirm with your password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xffb4234a),
+            ),
+            onPressed: () => Navigator.pop(dialogContext, password.text),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+    password.dispose();
+    if (confirmedPassword == null || confirmedPassword.isEmpty || !mounted) {
+      return;
+    }
+    setState(() => deletingAccount = true);
+    try {
+      await api.delete('/me', body: {'password': confirmedPassword});
+      widget.onLogout();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not delete account: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => deletingAccount = false);
+    }
   }
 
   void _chooseAppIcon() => showModalBottomSheet<void>(
@@ -2720,25 +2741,77 @@ class _ScanPageState extends State<ScanPage> {
     body: Column(
       children: [
         const HeaderHaze(height: 30),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(22, 14, 22, 18),
+          child: Text(
+            'Place the item QR code inside the frame',
+            style: TextStyle(
+              color: AppPalette.deep,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
         Expanded(
-          child: MobileScanner(
-            controller: scanner,
-            onDetect: (capture) {
-              if (done || manualEntry) return;
-              final code = capture.barcodes.firstOrNull?.rawValue;
-              if (code != null) {
-                done = true;
-                Navigator.pop(context, code);
-              }
-            },
-            errorBuilder: (context, error) => Center(
-              child: Text('Camera unavailable: ${error.errorCode.name}'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = constraints.biggest;
+                  final edge = math.min(
+                    math.min(size.width * .75, size.height * .52),
+                    260.0,
+                  );
+                  final scanWindow = Rect.fromCenter(
+                    center: size.center(Offset.zero),
+                    width: edge,
+                    height: edge,
+                  );
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      MobileScanner(
+                        controller: scanner,
+                        scanWindow: scanWindow,
+                        onDetect: (capture) {
+                          if (done || manualEntry) return;
+                          final code = capture.barcodes.firstOrNull?.rawValue;
+                          if (code != null) {
+                            done = true;
+                            Navigator.pop(context, code);
+                          }
+                        },
+                        errorBuilder: (context, error) => ColoredBox(
+                          color: AppPalette.deep,
+                          child: Center(
+                            child: Text(
+                              'Camera unavailable: ${error.errorCode.name}',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                      IgnorePointer(
+                        child: CustomPaint(
+                          painter: _ScanWindowPainter(scanWindow),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
         const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('Center the item QR code or barcode in the camera'),
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
+          child: Text(
+            'Hold steady until the item is recognized',
+            style: TextStyle(color: AppPalette.muted),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
@@ -2768,4 +2841,44 @@ class _ScanPageState extends State<ScanPage> {
       ],
     ),
   );
+}
+
+class _ScanWindowPainter extends CustomPainter {
+  const _ScanWindowPainter(this.window);
+
+  final Rect window;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shade = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRRect(RRect.fromRectAndRadius(window, const Radius.circular(20)));
+    canvas.drawPath(shade, Paint()..color = const Color(0x880d0920));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(window, const Radius.circular(20)),
+      Paint()
+        ..color = Colors.white
+        ..strokeWidth = 4
+        ..style = PaintingStyle.stroke,
+    );
+    final marker = Paint()
+      ..color = AppPalette.bright
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    for (final (x, y, dx, dy) in [
+      (window.left, window.top, 1.0, 1.0),
+      (window.right, window.top, -1.0, 1.0),
+      (window.left, window.bottom, 1.0, -1.0),
+      (window.right, window.bottom, -1.0, -1.0),
+    ]) {
+      canvas.drawLine(Offset(x, y + dy * 24), Offset(x, y + dy * 9), marker);
+      canvas.drawLine(Offset(x + dx * 9, y), Offset(x + dx * 24, y), marker);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanWindowPainter oldDelegate) =>
+      window != oldDelegate.window;
 }

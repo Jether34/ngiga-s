@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   home_address VARCHAR(240) NULL,
   avatar_data MEDIUMTEXT NULL,
   terms_accepted_at DATETIME(6) NULL,
+  deleted_at DATETIME(6) NULL,
   role ENUM('ADMIN','STUDENT','FACULTY','USER') NOT NULL
 ) ENGINE=InnoDB;
 

@@ -84,6 +84,7 @@ void startOutboxPump() {
             {"home_address", "home_address VARCHAR(240) NULL"},
             {"avatar_data", "avatar_data MEDIUMTEXT NULL"},
             {"terms_accepted_at", "terms_accepted_at DATETIME(6) NULL"},
+            {"deleted_at", "deleted_at DATETIME(6) NULL"},
         };
         for (const auto &[name, definition] : profileColumns) {
             auto exists = [&]() {

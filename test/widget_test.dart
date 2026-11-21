@@ -121,6 +121,9 @@ void main() {
     );
     expect(find.text('2026-12345'), findsOneWidget);
     expect(find.text('2nd Year'), findsOneWidget);
+    expect(find.text('Program is fixed after sign up'), findsNothing);
+    expect(find.text('Year level is fixed after sign up'), findsNothing);
+    expect(find.text('Student ID is fixed'), findsNothing);
     expect(find.widgetWithText(TextField, 'Student ID'), findsNothing);
     expect(find.byType(DropdownButtonFormField<String>), findsNothing);
     expect(tester.takeException(), isNull);

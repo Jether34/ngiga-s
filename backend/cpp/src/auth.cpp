@@ -55,7 +55,7 @@ Json::Value currentUser(const drogon::HttpRequestPtr &request) {
             .verify(token);
         auto db = drogon::app().getDbClient();
         const auto rows = db->execSqlSync(
-            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at FROM users WHERE id=?",
+            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at FROM users WHERE id=? AND deleted_at IS NULL",
             token.get_subject());
         if (rows.empty()) throw std::runtime_error("Session expired");
         Json::Value user;
@@ -171,10 +171,10 @@ void registerAuthRoutes() {
                 }
                 const auto rows = phoneLogin
                     ? db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
+                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE deleted_at IS NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
                         normalizedPhone(phone))
                     : db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE lower(email)=lower(?)",
+                        "SELECT id,email,password_hash,name,account_id,role FROM users WHERE deleted_at IS NULL AND lower(email)=lower(?)",
                         email);
                 if (rows.empty() || !bcrypt::validatePassword(
                         password, rows[0]["password_hash"].as<std::string>())) {
@@ -257,6 +257,48 @@ void registerAuthRoutes() {
         {Patch});
 
     app().registerHandler(
+        "/me",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            try { user = currentUser(request); }
+            catch (const std::runtime_error &e) { callback(error(k401Unauthorized, e.what())); return; }
+            if (user["role"].asString() != "STUDENT") {
+                callback(error(k403Forbidden, "Only student accounts can be deleted here")); return;
+            }
+            const auto body = request->getJsonObject();
+            if (!body || field(*body, "password").empty()) {
+                callback(error(k400BadRequest, "Enter your password to delete your account")); return;
+            }
+            try {
+                auto db = app().getDbClient();
+                const auto rows = db->execSqlSync(
+                    "SELECT password_hash FROM users WHERE id=? AND deleted_at IS NULL",
+                    user["id"].asString());
+                if (rows.empty() || !bcrypt::validatePassword(
+                        field(*body, "password"), rows[0]["password_hash"].as<std::string>())) {
+                    callback(error(k403Forbidden, "Incorrect password")); return;
+                }
+                const auto active = db->execSqlSync(
+                    "SELECT COUNT(*) AS total FROM loans WHERE user_id=? AND status IN ('ACTIVE','OVERDUE')",
+                    user["id"].asString());
+                if (active[0]["total"].as<int>() > 0) {
+                    callback(error(k409Conflict, "Return active loans before deleting your account")); return;
+                }
+                const auto id = user["id"].asString();
+                db->execSqlSync(
+                    "UPDATE users SET email=?,name='Deleted account',account_id=?,phone=NULL,"
+                    "year_level=NULL,program=NULL,section=NULL,home_address=NULL,avatar_data=NULL,"
+                    "password_hash=?,deleted_at=UTC_TIMESTAMP(6) WHERE id=? AND deleted_at IS NULL",
+                    "deleted+" + id + "@invalid.local", "DELETED-" + id,
+                    bcrypt::generateHash(drogon::utils::getUuid(), 12), id);
+                Json::Value result;
+                result["deleted"] = true;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to delete account")); }
+        },
+        {Delete});
+
+    app().registerHandler(
         "/me/avatar",
         [](const HttpRequestPtr &request, Callback &&callback) {
             Json::Value user;
@@ -306,7 +348,7 @@ void registerAuthRoutes() {
             try {
                 const auto rows = app().getDbClient()->execSqlSync(
                     "SELECT u.name,u.program,u.year_level,u.section,COUNT(l.id) AS borrow_count FROM users u "
-                    "JOIN loans l ON l.user_id=u.id WHERE u.role='STUDENT' "
+                    "JOIN loans l ON l.user_id=u.id WHERE u.role='STUDENT' AND u.deleted_at IS NULL "
                     "GROUP BY u.id,u.name,u.program,u.year_level,u.section ORDER BY borrow_count DESC,u.name ASC LIMIT 20");
                 Json::Value result(Json::arrayValue);
                 for (const auto &row : rows) {
