@@ -637,6 +637,25 @@ select:disabled {
   z-index: 5;
   box-shadow: 0 35px 75px rgba(11, 61, 46, 0.2);
 }
+@media (hover: hover) {
+  .welcome-visual .visual-card:hover {
+    animation-play-state: paused;
+    z-index: 5;
+    box-shadow: 0 35px 75px rgba(11, 61, 46, 0.2);
+  }
+  .welcome-visual:has(.visual-card-back:hover, .visual-card-float:hover) .visual-card-main:not(.is-selected) {
+    transform: translateY(7px) rotate(-4deg) scale(0.985);
+  }
+  .visual-card-main:hover {
+    transform: translateY(-8px) rotate(-1deg) scale(1.025);
+  }
+  .visual-card-back:hover {
+    transform: translate(-16px, -10px) rotate(2deg) scale(1.04);
+  }
+  .visual-card-float:hover {
+    transform: translate(12px, -13px) rotate(1deg) scale(1.045);
+  }
+}
 @keyframes visual-drift {
   0%, 100% { translate: 0 0; }
   50% { translate: 0 var(--drift-y); }

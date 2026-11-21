@@ -211,7 +211,9 @@ export function Welcome({ navigate }) {
         <div
           ref={visualRef}
           className={`welcome-visual${selectedVisual ? " has-selection" : ""}`}
-          onMouseLeave={() => setSelectedVisual(null)}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse") setSelectedVisual(null);
+          }}
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setSelectedVisual(null);
           }}
@@ -223,8 +225,9 @@ export function Welcome({ navigate }) {
             tabIndex={0}
             aria-label="Show available Canon EOS R50 card"
             aria-pressed={selectedVisual === "back"}
-            onMouseEnter={() => setSelectedVisual("back")}
-            onMouseLeave={() => setSelectedVisual((current) => current === "back" ? null : current)}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedVisual((current) => current === "back" ? null : current);
+            }}
             onClick={() => setSelectedVisual("back")}
             onKeyDown={(event) => selectVisualOnKey(event, "back")}
           >
@@ -243,7 +246,9 @@ export function Welcome({ navigate }) {
             tabIndex={0}
             aria-label="Show equipment workspace card"
             aria-pressed={selectedVisual === "main"}
-            onMouseEnter={() => setSelectedVisual("main")}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedVisual((current) => current === "main" ? null : current);
+            }}
             onClick={() => setSelectedVisual("main")}
             onKeyDown={(event) => selectVisualOnKey(event, "main")}
           >
@@ -278,8 +283,9 @@ export function Welcome({ navigate }) {
             tabIndex={0}
             aria-label="Show scan a unit card"
             aria-pressed={selectedVisual === "float"}
-            onMouseEnter={() => setSelectedVisual("float")}
-            onMouseLeave={() => setSelectedVisual((current) => current === "float" ? null : current)}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedVisual((current) => current === "float" ? null : current);
+            }}
             onClick={() => setSelectedVisual("float")}
             onKeyDown={(event) => selectVisualOnKey(event, "float")}
           >
