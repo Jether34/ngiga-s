@@ -86,6 +86,7 @@ void startOutboxPump() {
             {"terms_accepted_at", "terms_accepted_at DATETIME(6) NULL"},
             {"deleted_at", "deleted_at DATETIME(6) NULL"},
             {"email_verified_at", "email_verified_at DATETIME(6) NULL"},
+            {"account_status", "account_status ENUM('ACTIVE','SUSPENDED') NOT NULL DEFAULT 'ACTIVE'"},
         };
         for (const auto &[name, definition] : profileColumns) {
             auto exists = [&]() {
@@ -106,6 +107,22 @@ void startOutboxPump() {
             "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() "
             "AND TABLE_NAME='equipment' AND COLUMN_NAME='image_data'");
         if (photoColumn.empty()) db->execSqlSync("ALTER TABLE equipment ADD COLUMN image_data MEDIUMTEXT NULL");
+        for (const auto &[name, definition] : std::vector<std::pair<std::string, std::string>>{
+                 {"description", "description TEXT NULL"},
+                 {"archived", "archived TINYINT(1) NOT NULL DEFAULT 0"}}) {
+            const auto found = db->execSqlSync(
+                "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() "
+                "AND TABLE_NAME='equipment' AND COLUMN_NAME=?", name);
+            if (found.empty()) db->execSqlSync("ALTER TABLE equipment ADD COLUMN " + definition);
+        }
+        for (const auto &[name, definition] : std::vector<std::pair<std::string, std::string>>{
+                 {"manufacturer_serial", "manufacturer_serial VARCHAR(160) NULL"},
+                 {"received_at", "received_at DATETIME(6) NULL"}}) {
+            const auto found = db->execSqlSync(
+                "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() "
+                "AND TABLE_NAME='units' AND COLUMN_NAME=?", name);
+            if (found.empty()) db->execSqlSync("ALTER TABLE units ADD COLUMN " + definition);
+        }
         db->execSqlSync("CREATE TABLE IF NOT EXISTS notification_reads ("
             "user_id VARCHAR(36) NOT NULL,notification_id VARCHAR(64) NOT NULL,"
             "read_at DATETIME(6) NOT NULL,PRIMARY KEY(user_id,notification_id),"

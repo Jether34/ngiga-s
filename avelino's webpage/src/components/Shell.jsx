@@ -7,7 +7,7 @@ import {
   Menu,
   Boxes,
 } from "lucide-react";
-import { SCHOOL_NAME, receipts } from "../data/fixtures";
+import { SCHOOL_NAME } from "../data/fixtures";
 import { Badge, IconButton } from "../components/ui";
 import { studentLinks, adminLinks, isOverdue } from "../utils/domain";
 import { HelpCarousel } from "./HelpCarousel";
@@ -23,6 +23,7 @@ export function Shell({
   notify,
   products,
   loans,
+  receipts,
   helpTipIndex,
   setHelpTipIndex,
 }) {
@@ -214,8 +215,8 @@ export function Shell({
                       <ChevronRight size={16} aria-hidden="true" />
                     </button>
                   ))}
-                  {activeNotices.length === 0 && <p className="notification-empty">No demo alerts right now.</p>}
-                  <small>Demo alerts based on fixture data</small>
+                  {activeNotices.length === 0 && <p className="notification-empty">No alerts right now.</p>}
+                  <small>Alerts reflect current ENcoRE inventory and loans.</small>
                 </div>
               )}
             </div>
@@ -239,7 +240,7 @@ export function Shell({
           <span>
             © {new Date().getFullYear()} {SCHOOL_NAME}
           </span>
-          <span>Frontend demo · No backend connection</span>
+          <span>ENcoRE · Connected campus equipment</span>
         </footer>
       </div>
       <button

@@ -23,8 +23,7 @@ import {
   RefreshCw,
   CheckCircle2,
 } from "lucide-react";
-import { users as fixtureUsers } from "../data/fixtures";
-import { demoService } from "../services/demoService";
+import { apiService } from "../services/apiService";
 import {
   Badge,
   IconButton,
@@ -53,6 +52,7 @@ export function AdminHome({
   units,
   loans,
   transactions,
+  users,
   navigate,
   refresh,
   loading,
@@ -144,7 +144,7 @@ export function AdminHome({
           {transactions.length ? transactions.slice(0, 5).map((tx) => {
             const unit = units.find((x) => x.id === tx.unitId),
               product = productOf(unit, products),
-              student = fixtureUsers.find((x) => x.id === tx.studentId);
+              student = users.find((x) => x.id === tx.studentId);
             return (
               <button
                 className="transaction-mini"
@@ -241,7 +241,7 @@ export function AdminHome({
               {active.map((loan) => {
                 const unit = unitOf(loan, units),
                   product = productOf(unit, products),
-                  student = fixtureUsers.find((x) => x.id === loan.studentId);
+                  student = users.find((x) => x.id === loan.studentId);
                 return (
                   <tr key={loan.id} className="click-row">
                     <td><button className="table-row-link" onClick={() => navigate("/admin/history")}>{loan.loanNumber}</button></td>
@@ -328,6 +328,7 @@ export function ProductForm({ initial, existingProducts, onClose, onSave }) {
           <Field label="Equipment ID" required>
             <input
               value={form.equipmentId}
+              readOnly={Boolean(initial)}
               onChange={(e) =>
                 setForm({ ...form, equipmentId: e.target.value })
               }
@@ -393,7 +394,7 @@ export function ProductForm({ initial, existingProducts, onClose, onSave }) {
             Cancel
           </button>
           <button className="button" disabled={saving}>
-            {saving ? "Checking…" : `Preview ${initial ? "changes" : "product"}`} <Check size={17} />
+            {saving ? "Saving…" : `Save ${initial ? "changes" : "product"}`} <Check size={17} />
           </button>
         </div>
       </form>
@@ -407,6 +408,7 @@ export function AdminProducts({
   units,
   navigate,
   notify,
+  refresh,
 }) {
   const [search, setSearch] = useState(""),
     [category, setCategory] = useState("All"),
@@ -437,27 +439,16 @@ export function AdminProducts({
           : a.category.localeCompare(b.category),
     );
   const save = async (item) => {
-    const response = await demoService.saveProduct(item);
-    if (!response.ok) throw new Error(response.error?.message || "Could not validate this product.");
+    const response = await apiService.saveProduct(item);
+    if (!response.ok) throw new Error(response.error?.message || "Could not save this product.");
     if (editing)
       setProducts((old) =>
-        old.map((x) => (x.id === editing.id ? { ...x, ...item } : x)),
+        old.map((x) => (x.id === editing.id ? response.data : x)),
       );
     else
-      setProducts((old) => [
-        ...old,
-        {
-          ...item,
-          id: `preview-${Date.now()}`,
-          totalUnits: 0,
-          availableUnits: 0,
-          archived: false,
-          icon: "generic",
-        },
-      ]);
-    notify(
-      "Product preview updated locally. Connect the inventory API to save it.",
-    );
+      setProducts((old) => [...old, response.data]);
+    await refresh();
+    notify("Product saved to ENcoRE.");
     setEditing(undefined);
   };
   return (
@@ -636,8 +627,7 @@ export function AdminProducts({
         >
           <p className="modal-copy">
             {archive.name} will be{" "}
-            {archive.archived ? "restored" : "hidden from the active catalog"}{" "}
-            in this demo session. Existing loan records remain visible.
+            {archive.archived ? "restored to the active catalog" : "hidden from the active catalog"}. Existing loan records remain visible.
           </p>
           <div className="modal-actions">
             <button
@@ -648,17 +638,15 @@ export function AdminProducts({
             </button>
             <button
               className="button"
-              onClick={() => {
-                setProducts((old) =>
-                  old.map((x) =>
-                    x.id === archive.id ? { ...x, archived: !x.archived } : x,
-                  ),
-                );
-                notify("Catalog preview updated locally.");
+              onClick={async () => {
+                const response = await apiService.saveProduct({ ...archive, archived: !archive.archived });
+                if (!response.ok) { notify(response.error?.message || "Could not update product.", "error"); return; }
+                await refresh();
+                notify("Catalog updated.");
                 setArchive(null);
               }}
             >
-              {archive.archived ? "Restore preview" : "Archive preview"}
+              {archive.archived ? "Restore product" : "Archive product"}
             </button>
           </div>
         </Modal>
@@ -667,7 +655,7 @@ export function AdminProducts({
   );
 }
 
-export function ReceiveMode({ products, units, notify, code, setCode }) {
+export function ReceiveMode({ products, units, notify, code, setCode, refresh }) {
   const [productId, setProductId] = useState(products.find((item) => !item.archived)?.id || ""),
     [quantity, setQuantity] = useState(1),
     [date, setDate] = useState(dateInput().slice(0, 10)),
@@ -721,18 +709,19 @@ export function ReceiveMode({ products, units, notify, code, setCode }) {
     }
     setBusy(true);
     try {
-      const response = await demoService.receiveUnit({
+      const response = await apiService.receiveUnit({
         productId,
         itemCode: c,
         serialNumber: s,
         receivedAt: date,
       });
       if (!response.ok) throw new Error(response.error?.message || "Could not validate this unit.");
+      await refresh();
       setEntries((current) => [...current, { itemCode: c, serialNumber: s }]);
       setCode("");
       setSerial("");
       setError("");
-      notify(`Unit ${entries.length + 1} of ${quantity} validated in demo preview.`);
+      notify(`Unit ${entries.length + 1} of ${quantity} registered.`);
     } catch (receiveError) {
       setError(receiveError.message || "Could not validate this unit. Try again.");
     } finally {
@@ -748,7 +737,7 @@ export function ReceiveMode({ products, units, notify, code, setCode }) {
             <span className="eyebrow">REGISTER / RECEIVE</span>
             <h2>Receive physical units</h2>
           </div>
-          <Badge tone="warning">Demo preview</Badge>
+          <Badge tone="success">Live inventory</Badge>
         </div>
         <p className="panel-intro">
           Select a product, then register each physical unit with its own code
@@ -812,8 +801,7 @@ export function ReceiveMode({ products, units, notify, code, setCode }) {
             </div>
             {done ? (
               <div className="callout success-callout">
-                <CheckCircle2 size={20} /> All unit details validated locally.
-                No stock was added without a backend confirmation.
+                <CheckCircle2 size={20} /> All units were registered in ENcoRE.
               </div>
             ) : (
               <form onSubmit={add}>
@@ -895,7 +883,7 @@ export function ReceiveMode({ products, units, notify, code, setCode }) {
   );
 }
 
-export function IssueMode({ products, notify }) {
+export function IssueMode({ products, users, notify, refresh }) {
   const [studentId, setStudentId] = useState(""),
     [unit, setUnit] = useState(null),
     [due, setDue] = useState(""),
@@ -904,7 +892,7 @@ export function IssueMode({ products, notify }) {
     [borrowAt, setBorrowAt] = useState(null),
     [busy, setBusy] = useState(false);
   const lookupSequence = useRef(0);
-  const students = fixtureUsers.filter(
+  const students = users.filter(
     (x) => x.role === "STUDENT" && x.accountStatus === "Active",
   );
   const student = students.find((x) => x.id === studentId);
@@ -917,7 +905,7 @@ export function IssueMode({ products, notify }) {
     setDue("");
     setBorrowAt(null);
     try {
-      const response = await demoService.lookupUnit(code);
+      const response = await apiService.lookupUnit(code);
       if (sequence !== lookupSequence.current) return;
       if (!response.ok) throw new Error(response.error?.message || "Could not find this unit.");
       setUnit(response.data);
@@ -953,10 +941,11 @@ export function IssueMode({ products, notify }) {
     if (busy) return;
     setBusy(true);
     try {
-      const response = await demoService.adminIssue();
+      const response = await apiService.adminIssue({ unitId: unit.id, dueAt: due, borrowerId: student.id });
       if (!response.ok) throw new Error(response.error?.message || "Could not complete the issue review.");
       setStep("done");
-      notify("Issue preview completed. No loan was saved.");
+      await refresh();
+      notify("Loan issued and saved to ENcoRE.");
     } catch (issueError) {
       setError(issueError.message || "Could not complete the issue review. Try again.");
     } finally {
@@ -999,7 +988,7 @@ export function IssueMode({ products, notify }) {
         <div className="panel-title">
           <div>
             <span className="eyebrow">ISSUE REVIEW</span>
-            <h2>{step === "done" ? "Preview result" : "Loan details"}</h2>
+            <h2>{step === "done" ? "Issue result" : "Loan details"}</h2>
           </div>
         </div>
         {step === "done" ? (
@@ -1007,11 +996,8 @@ export function IssueMode({ products, notify }) {
             <span className="success-emblem">
               <Check size={30} />
             </span>
-            <h3>Issue preview completed</h3>
-            <p>
-              No loan was saved or synchronized. A backend must recheck
-              availability before issuing.
-            </p>
+            <h3>Issue completed</h3>
+            <p>The loan and receipt were saved in ENcoRE.</p>
             <button
               className="button wide"
               onClick={() => {
@@ -1059,7 +1045,7 @@ export function IssueMode({ products, notify }) {
             {step === "review" ? (
               <>
                 <div className="review-box">
-                  <h3>Confirm issue preview</h3>
+                  <h3>Confirm issue</h3>
                   <div>
                     <span>Student</span>
                     <strong>
@@ -1095,7 +1081,7 @@ export function IssueMode({ products, notify }) {
                     Back
                   </button>
                   <button className="button" onClick={confirm} disabled={busy}>
-                    Confirm demo issue <Check size={17} />
+                    Confirm issue <Check size={17} />
                   </button>
                 </div>
               </>
@@ -1125,7 +1111,7 @@ export function IssueMode({ products, notify }) {
   );
 }
 
-export function ReturnMode({ products, loans, notify }) {
+export function ReturnMode({ products, loans, users, notify, refresh }) {
   const [unit, setUnit] = useState(null),
     [loan, setLoan] = useState(null),
     [condition, setCondition] = useState("Good"),
@@ -1144,7 +1130,7 @@ export function ReturnMode({ products, loans, notify }) {
     setTime(dateInput());
     setCondition("Good");
     try {
-      const response = await demoService.lookupUnit(code);
+      const response = await apiService.lookupUnit(code);
       if (sequence !== lookupSequence.current) return;
       if (!response.ok) throw new Error(response.error?.message || "Could not find this unit.");
       const active = loans.find(
@@ -1186,12 +1172,11 @@ export function ReturnMode({ products, loans, notify }) {
     if (busy) return;
     setBusy(true);
     try {
-      const response = await demoService.adminReturn();
+      const response = await apiService.adminReturn({ itemCode: unit.itemCode, returnedAt: time, condition });
       if (!response.ok) throw new Error(response.error?.message || "Could not complete the return review.");
       setStep("done");
-      notify(
-        "Return preview completed. No inventory or loan record was changed.",
-      );
+      await refresh();
+      notify("Return recorded in ENcoRE.");
     } catch (returnError) {
       setError(returnError.message || "Could not complete the return review. Try again.");
       setStep("capture");
@@ -1200,7 +1185,7 @@ export function ReturnMode({ products, loans, notify }) {
     }
   };
   const product = productOf(unit, products),
-    student = fixtureUsers.find((x) => x.id === loan?.studentId);
+    student = users.find((x) => x.id === loan?.studentId);
   return (
     <div className="scan-layout">
       <div className="panel">
@@ -1223,7 +1208,7 @@ export function ReturnMode({ products, loans, notify }) {
         <div className="panel-title">
           <div>
             <span className="eyebrow">RETURN REVIEW</span>
-            <h2>{step === "done" ? "Preview result" : "Active loan"}</h2>
+            <h2>{step === "done" ? "Return result" : "Active loan"}</h2>
           </div>
         </div>
         {step === "done" ? (
@@ -1231,13 +1216,13 @@ export function ReturnMode({ products, loans, notify }) {
             <span className="success-emblem">
               <Check size={30} />
             </span>
-            <h3>Return preview completed</h3>
+            <h3>Return completed</h3>
             <p>
               Expected outcome:{" "}
               <strong>
                 {condition === "Good" ? "Available" : "Maintenance"}
               </strong>
-              . No loan or inventory record was changed.
+              . The loan and inventory record were updated.
             </p>
             <button
               className="button wide"
@@ -1288,7 +1273,7 @@ export function ReturnMode({ products, loans, notify }) {
             {step === "review" ? (
               <>
                 <div className="review-box">
-                  <h3>Confirm return preview</h3>
+                  <h3>Confirm return</h3>
                   <div>
                     <span>Actual return</span>
                     <strong>{pretty(time)}</strong>
@@ -1312,7 +1297,7 @@ export function ReturnMode({ products, loans, notify }) {
                     Back
                   </button>
                   <button className="button" onClick={confirm} disabled={busy}>
-                    Confirm demo return <Check size={17} />
+                    Confirm return <Check size={17} />
                   </button>
                 </div>
               </>
@@ -1360,7 +1345,7 @@ export function ReturnMode({ products, loans, notify }) {
   );
 }
 
-export function AdminScan({ products, units, loans, notify }) {
+export function AdminScan({ products, units, loans, users, notify, refresh }) {
   const [mode, setMode] = useState("Receive"),
     [capturedCode, setCapturedCode] = useState(""),
     [showCapture, setShowCapture] = useState(false);
@@ -1454,19 +1439,20 @@ export function AdminScan({ products, units, loans, notify }) {
             notify={notify}
             code={capturedCode}
             setCode={setCapturedCode}
+            refresh={refresh}
           />
         </>
       ) : mode === "Issue" ? (
-        <IssueMode products={products} notify={notify} />
+        <IssueMode products={products} users={users} notify={notify} refresh={refresh} />
       ) : (
-        <ReturnMode products={products} loans={loans} notify={notify} />
+        <ReturnMode products={products} loans={loans} users={users} notify={notify} refresh={refresh} />
       )}
       </div>
     </>
   );
 }
 
-export function AdminHistory({ transactions, units, products, loans }) {
+export function AdminHistory({ transactions, units, products, loans, users }) {
   const requestedStatus = new URLSearchParams(window.location.search).get("status");
   const [search, setSearch] = useState(""),
     [type, setType] = useState("All"),
@@ -1483,7 +1469,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
     .filter((tx) => {
       const unit = units.find((x) => x.id === tx.unitId),
         product = productOf(unit, products),
-        person = fixtureUsers.find((x) => x.id === tx.studentId),
+        person = users.find((x) => x.id === tx.studentId),
         loan = loans.find((x) => x.id === tx.loanId);
       const haystack =
         `${product?.name} ${product?.equipmentId} ${unit?.itemCode} ${person?.fullName} ${person?.studentId}`.toLowerCase();
@@ -1550,7 +1536,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
             aria-label="Student"
           >
             <option value="All">All students</option>
-            {fixtureUsers
+            {users
               .filter((x) => x.role === "STUDENT")
               .map((x) => (
                 <option value={x.id} key={x.id}>
@@ -1598,7 +1584,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
                 {shown.map((tx) => {
                   const unit = units.find((x) => x.id === tx.unitId),
                     product = productOf(unit, products),
-                    person = fixtureUsers.find((x) => x.id === tx.studentId),
+                    person = users.find((x) => x.id === tx.studentId),
                     loan = loans.find((x) => x.id === tx.loanId);
                   return (
                     <tr key={tx.id} className="click-row">
@@ -1657,7 +1643,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
         (() => {
           const unit = units.find((x) => x.id === selected.unitId),
             product = productOf(unit, products),
-            person = fixtureUsers.find((x) => x.id === selected.studentId),
+            person = users.find((x) => x.id === selected.studentId),
             loan = loans.find((x) => x.id === selected.loanId);
           return (
             <Modal
@@ -1696,7 +1682,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
                 <div>
                   <span>Operator</span>
                   <strong>
-                    {fixtureUsers.find((x) => x.id === selected.operatorId)
+                    {users.find((x) => x.id === selected.operatorId)
                       ?.fullName || "—"}
                   </strong>
                 </div>
@@ -1712,14 +1698,14 @@ export function AdminHistory({ transactions, units, products, loans }) {
   );
 }
 
-export function AdminUsers({ loans, units, products, notify }) {
+export function AdminUsers({ loans, units, products, users, notify, refresh }) {
   const [search, setSearch] = useState(""),
     [program, setProgram] = useState("All"),
     [year, setYear] = useState("All"),
     [selected, setSelected] = useState(null),
     [statusPreview, setStatusPreview] = useState({}),
     [statusBusy, setStatusBusy] = useState(false);
-  const students = fixtureUsers.filter((x) => x.role === "STUDENT");
+  const students = users.filter((x) => x.role === "STUDENT");
   const shown = students.filter(
     (x) =>
       `${x.fullName} ${x.studentId} ${x.program} ${x.yearLevel}`
@@ -1936,10 +1922,11 @@ export function AdminUsers({ loans, units, products, notify }) {
                     : "Active";
                 setStatusBusy(true);
                 try {
-                  const response = await demoService.setStudentStatus(selected.id, next);
+                  const response = await apiService.setStudentStatus(selected.id, next);
                   if (!response.ok) throw new Error(response.error?.message || "Could not validate account status.");
                   setStatusPreview((old) => ({ ...old, [selected.id]: next }));
-                  notify(`Account ${next.toLowerCase()} preview only; no server change.`);
+                  await refresh();
+                  notify(`Account ${next.toLowerCase()}.`);
                 } catch (statusError) {
                   notify(statusError.message || "Could not validate account status. Try again.", "error");
                 } finally {
@@ -1947,7 +1934,6 @@ export function AdminUsers({ loans, units, products, notify }) {
                 }
               }}
             >
-              Preview{" "}
               {(statusPreview[selected.id] || selected.accountStatus) ===
               "Active"
                 ? "suspend"

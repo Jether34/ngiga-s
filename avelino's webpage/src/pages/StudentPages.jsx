@@ -25,8 +25,7 @@ import {
   Moon,
   Monitor,
 } from "lucide-react";
-import { receipts } from "../data/fixtures";
-import { demoService } from "../services/demoService";
+import { apiService } from "../services/apiService";
 import {
   Badge,
   Empty,
@@ -300,7 +299,7 @@ export function StudentHome({
   );
 }
 
-export function StudentScan({ session, products }) {
+export function StudentScan({ session, products, refresh, notify }) {
   const [unit, setUnit] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -317,7 +316,7 @@ export function StudentScan({ session, products }) {
     setDue("");
     setBorrowAt(null);
     try {
-      const response = await demoService.lookupUnit(code);
+      const response = await apiService.lookupUnit(code);
       if (sequence !== lookupSequence.current) return;
       if (!response.ok) throw new Error(response.error?.message || "Could not find this unit.");
       setUnit(response.data);
@@ -346,9 +345,11 @@ export function StudentScan({ session, products }) {
     if (busy) return;
     setBusy(true);
     try {
-      const response = await demoService.borrow();
+      const response = await apiService.borrow({ unitId: unit.id, dueAt: due });
       if (!response.ok) throw new Error(response.error?.message || "Could not complete the review.");
       setStep("done");
+      await refresh();
+      notify("Loan confirmed. Your receipt is available in history.");
     } catch (borrowError) {
       setError(borrowError.message || "Could not complete the review. Try again.");
       setStep("result");
@@ -369,10 +370,6 @@ export function StudentScan({ session, products }) {
         title="Scan equipment"
         description="Capture the exact physical unit before reviewing your loan."
       />
-      <DemoNote>
-        Demo scan lookup uses fixture codes such as CAM-R50-001. Confirmations
-        are previews only; no loan or receipt is saved.
-      </DemoNote>
       <div className="scan-layout">
         <div className="panel scan-panel">
           <div className="panel-title">
@@ -411,13 +408,12 @@ export function StudentScan({ session, products }) {
               <span className="success-emblem">
                 <Check size={30} />
               </span>
-              <h3>Review completed</h3>
+              <h3>Loan confirmed</h3>
               <p>
-                This was a demo confirmation. No loan was saved and no receipt
-                was generated or emailed.
+                Your loan was saved to ENcoRE. Check History for its receipt and return date.
               </p>
               <div className="reference-line">
-                Preview reference <strong>PREVIEW-LOAN</strong>
+                Unit <strong>{unit?.itemCode}</strong>
               </div>
               <button className="button wide" onClick={reset}>
                 Scan another item
@@ -501,8 +497,7 @@ export function StudentScan({ session, products }) {
                     </div>
                   </div>
                   <p className="fine-print">
-                    Availability and policy are checked by the server when an
-                    API is connected.
+                    The server checks availability and borrowing policy before saving this loan.
                   </p>
                   <div className="action-row">
                     <button
@@ -516,7 +511,7 @@ export function StudentScan({ session, products }) {
                       onClick={confirm}
                       disabled={busy}
                     >
-                      {busy ? "Reviewing…" : "Confirm demo loan"}{" "}
+                      {busy ? "Saving…" : "Confirm loan"}{" "}
                       <Check size={17} />
                     </button>
                   </div>
@@ -547,7 +542,8 @@ export function StudentScan({ session, products }) {
   );
 }
 
-export function StudentHistory({ session, loans, units, products }) {
+export function StudentHistory({ session, loans, units, products, receipts }) {
+  const [receiptError, setReceiptError] = useState("");
   const requestedFilter = new URLSearchParams(window.location.search).get("filter");
   const [filter, setFilter] = useState(
     ["Active", "Returned", "Overdue"].includes(requestedFilter)
@@ -574,6 +570,13 @@ export function StudentHistory({ session, loans, units, products }) {
         ? isOverdue(loan)
         : loan.status === filter.toUpperCase() && !isOverdue(loan)),
   );
+  const download = async (format, loan, receipt, unit, product) => {
+    setReceiptError("");
+    try {
+      const { downloadReceipt } = await import("../utils/receiptExport");
+      await downloadReceipt({ format, loan, receipt, unit, product, user: session });
+    } catch (error) { setReceiptError(error.message || "Could not download receipt."); }
+  };
   return (
     <>
       <PageHead
@@ -581,10 +584,6 @@ export function StudentHistory({ session, loans, units, products }) {
         title="Borrowing history"
         description="A clear record of your equipment and return dates."
       />
-      <DemoNote>
-        History is limited to the current demo student. Receipt downloads
-        require actual artifact URLs from a future receipt service.
-      </DemoNote>
       <div className="history-summary">
         <StatCard
           icon={PackageCheck}
@@ -661,7 +660,7 @@ export function StudentHistory({ session, loans, units, products }) {
                     <small>
                       Receipt:{" "}
                       {receipt?.renderStatus === "READY"
-                        ? "Ready, file unavailable"
+                        ? "Ready"
                         : receipt?.renderStatus === "PENDING"
                           ? "Pending"
                           : "Not generated"}
@@ -734,38 +733,32 @@ export function StudentHistory({ session, loans, units, products }) {
                     {receipt?.renderStatus === "PENDING"
                       ? "Pending"
                       : receipt?.renderStatus === "READY"
-                        ? "Ready, artifact unavailable"
+                        ? "Ready"
                         : "Not generated"}
                   </strong>
                 </div>
                 <div>
                   <span>Email delivery</span>
-                  <strong>Not sent (demo)</strong>
+                  <strong>Check your ENcoRE email</strong>
                 </div>
               </div>
               <div className="receipt-actions">
                 <button
                   className="button secondary"
-                  disabled={!receipt?.pdfUrl}
-                  onClick={() =>
-                    window.open(receipt.pdfUrl, "_blank", "noopener,noreferrer")
-                  }
+                  disabled={!receipt}
+                  onClick={() => download("pdf", selected, receipt, unit, product)}
                 >
                   <Download size={17} /> PDF receipt
                 </button>
                 <button
                   className="button secondary"
-                  disabled={!receipt?.pngUrl}
-                  onClick={() =>
-                    window.open(receipt.pngUrl, "_blank", "noopener,noreferrer")
-                  }
+                  disabled={!receipt}
+                  onClick={() => download("png", selected, receipt, unit, product)}
                 >
                   <Download size={17} /> PNG receipt
                 </button>
               </div>
-              <p className="fine-print">
-                Downloads activate only when the receipt service supplies files.
-              </p>
+              {receiptError && <p className="inline-error" role="alert">{receiptError}</p>}
             </Modal>
           );
         })()}
@@ -773,7 +766,7 @@ export function StudentHistory({ session, loans, units, products }) {
   );
 }
 
-export function SettingsPage({ session, role, logout, notify, avatar, updateAvatar, theme, updateTheme }) {
+export function SettingsPage({ session, role, logout, notify, avatar, updateAvatar, theme, updateTheme, setSession }) {
   const avatarInputRef = useRef(null);
   const [avatarError, setAvatarError] = useState("");
   const initials = session.fullName.split(" ").map((part) => part[0]).slice(0, 2).join("");
@@ -783,16 +776,16 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
     if (!file) return;
     try {
       const optimized = await optimizeAvatar(file);
-      updateAvatar(optimized);
+      await updateAvatar(optimized);
       setAvatarError("");
-      notify("Profile picture saved in this browser.");
+      notify("Profile picture saved to ENcoRE.");
     } catch (uploadError) {
       setAvatarError(uploadError.message || "Could not save the profile picture.");
     }
   };
-  const removeAvatar = () => {
+  const removeAvatar = async () => {
     try {
-      updateAvatar("");
+      await updateAvatar("");
       setAvatarError("");
       notify("Profile picture removed.");
     } catch {
@@ -801,6 +794,10 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
   };
   const [form, setForm] = useState({
     fullName: session.fullName,
+    schoolEmail: session.schoolEmail,
+    studentId: session.studentId,
+    phone: session.phone || "",
+    section: session.section || "",
     program: session.program || "",
     yearLevel: session.yearLevel || "",
     address: session.address || "",
@@ -820,27 +817,26 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
     event.preventDefault();
     if (
       form.fullName.trim().length < 2 ||
-      !form.program.trim() ||
-      form.address.trim().length < 8 ||
-      (role === "STUDENT" && !form.yearLevel)
+      (role === "STUDENT" && (!form.program.trim() || !form.yearLevel || !form.phone.trim() || !form.section.trim() || form.address.trim().length < 5))
     ) {
-      setError("Complete your name, program, year level, and address.");
+      setError("Complete your name, phone, section, and address.");
       return;
     }
     setError("");
     try {
-      const response = await demoService.saveProfile(form);
+      const response = await apiService.saveProfile(form);
       if (!response.ok) throw new Error(response.error?.message || "Could not validate profile changes.");
-      notify("Profile preview validated. Connect a profile API to save changes.");
+      setSession(response.data);
+      notify("Profile saved to ENcoRE.");
     } catch (saveError) {
       setError(saveError.message || "Could not validate profile changes. Try again.");
     }
   };
-  const changePassword = (event) => {
+  const changePassword = async (event) => {
     event.preventDefault();
     if (
       !password.current ||
-      !/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/.test(password.next) ||
+      password.next.length < 12 || password.next.length > 72 ||
       password.next !== password.confirm
     ) {
       notify(
@@ -849,9 +845,9 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
       );
       return;
     }
-    notify(
-      "Password form validated. Connect an identity service to change it.",
-    );
+    const response = await apiService.changePassword(password.current, password.next);
+    if (!response.ok) { notify(response.error?.message || "Could not change password.", "error"); return; }
+    notify("Password changed. Use it the next time you sign in.");
     setPassword({ current: "", next: "", confirm: "" });
   };
   return (
@@ -879,7 +875,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
             <span className="avatar profile-photo-preview" aria-label="Profile picture preview">{avatar ? <img src={avatar} alt="" /> : initials}</span>
             <div className="profile-photo-actions">
               <strong>Profile picture</strong>
-              <p>JPEG, PNG, or WebP · Up to 2 MB. Stored only in this browser.</p>
+              <p>JPEG, PNG, or WebP · Up to 2 MB. Saved to your ENcoRE account.</p>
               <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onAvatarSelected} aria-label="Choose profile picture" className="visually-hidden" />
               <div className="profile-photo-buttons">
                 <button type="button" className="button secondary" onClick={() => avatarInputRef.current?.click()}><Camera size={16} /> {avatar ? "Change picture" : "Upload picture"}</button>
@@ -914,23 +910,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
                   <input value={session.studentId || ""} readOnly />
                 </Field>
                 <Field label="Year level" required>
-                  <select
-                    value={form.yearLevel}
-                    onChange={(e) =>
-                      setForm({ ...form, yearLevel: e.target.value })
-                    }
-                  >
-                    {[
-                      "1st Year",
-                      "2nd Year",
-                      "3rd Year",
-                      "4th Year",
-                      "5th Year",
-                      "Graduate",
-                    ].map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </select>
+                  <input value={form.yearLevel} readOnly />
                 </Field>
               </div>
             )}
@@ -940,9 +920,14 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
             >
               <input
                 value={form.program}
+                readOnly={role === "STUDENT"}
                 onChange={(e) => setForm({ ...form, program: e.target.value })}
               />
             </Field>
+            {role === "STUDENT" && <div className="form-grid">
+              <Field label="Phone number" required><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+              <Field label="Section / block" required><input value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })} /></Field>
+            </div>}
             <Field label="Complete address" required>
               <textarea
                 rows="3"
@@ -957,7 +942,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
               </div>
             )}
             <button className="button">
-              Validate profile changes <Check size={17} />
+              Save profile <Check size={17} />
             </button>
           </form>
         </div>
@@ -998,7 +983,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
               </Field>
               <Field
                 label="New password"
-                hint="8+ characters, upper and lowercase letters, and a number"
+                hint="12 to 72 characters"
               >
                 <input
                   type="password"
@@ -1020,7 +1005,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
                 />
               </Field>
               <button className="button secondary wide">
-                Validate password change
+                Change password
               </button>
             </form>
           </div>
@@ -1029,7 +1014,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
               <div className="panel-title">
                 <div>
                   <span className="eyebrow">SYSTEM</span>
-                  <h2>Demo preferences</h2>
+                  <h2>Browser preferences</h2>
                 </div>
                 <SlidersHorizontal size={21} />
               </div>
@@ -1059,7 +1044,7 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
           )}
           <div className="panel logout-panel">
             <h3>Sign out</h3>
-            <p>End this demo session and return to the welcome screen.</p>
+            <p>End this session and return to the welcome screen.</p>
             <button className="button secondary" onClick={logout}>
               <LogOut size={17} /> Log out
             </button>

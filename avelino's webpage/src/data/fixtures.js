@@ -1,7 +1,7 @@
 export const SCHOOL_NAME =
-  import.meta.env.VITE_SCHOOL_NAME || "Campus University";
+  import.meta.env.VITE_SCHOOL_NAME || "FEU Tech";
 export const SCHOOL_DOMAINS = (
-  import.meta.env.VITE_SCHOOL_DOMAINS || "university.edu"
+  import.meta.env.VITE_SCHOOL_DOMAINS || "fit.edu.ph"
 )
   .split(",")
   .map((value) => value.trim().toLowerCase())

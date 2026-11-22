@@ -166,7 +166,7 @@ Json::Value currentUser(const drogon::HttpRequestPtr &request) {
             .verify(token);
         auto db = drogon::app().getDbClient();
         const auto rows = db->execSqlSync(
-            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at FROM users WHERE id=? AND deleted_at IS NULL AND (role<>'STUDENT' OR email_verified_at IS NOT NULL)",
+            "SELECT id,email,name,account_id,role,phone,year_level,program,section,home_address,terms_accepted_at,account_status FROM users WHERE id=? AND deleted_at IS NULL AND account_status='ACTIVE' AND (role<>'STUDENT' OR email_verified_at IS NOT NULL)",
             token.get_subject());
         if (rows.empty()) throw std::runtime_error("Session expired");
         Json::Value user;
@@ -175,6 +175,7 @@ Json::Value currentUser(const drogon::HttpRequestPtr &request) {
         user["name"] = rows[0]["name"].as<std::string>();
         user["account_id"] = rows[0]["account_id"].as<std::string>();
         user["role"] = rows[0]["role"].as<std::string>();
+        user["account_status"] = rows[0]["account_status"].as<std::string>();
         for (const auto *key : {"phone", "year_level", "program", "section", "home_address"})
             user[key] = rows[0][key].isNull() ? "" : rows[0][key].as<std::string>();
         user["terms_accepted_at"] = rows[0]["terms_accepted_at"].isNull() ? "" : rows[0]["terms_accepted_at"].as<std::string>();
@@ -286,14 +287,17 @@ void registerAuthRoutes() {
                 }
                 const auto rows = phoneLogin
                     ? db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role,email_verified_at FROM users WHERE deleted_at IS NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
+                        "SELECT id,email,password_hash,name,account_id,role,email_verified_at,account_status FROM users WHERE deleted_at IS NULL AND REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','')=?",
                         normalizedPhone(phone))
                     : db->execSqlSync(
-                        "SELECT id,email,password_hash,name,account_id,role,email_verified_at FROM users WHERE deleted_at IS NULL AND lower(email)=lower(?)",
+                        "SELECT id,email,password_hash,name,account_id,role,email_verified_at,account_status FROM users WHERE deleted_at IS NULL AND lower(email)=lower(?)",
                         email);
                 if (rows.empty() || !bcrypt::validatePassword(
                         password, rows[0]["password_hash"].as<std::string>())) {
                     callback(error(k401Unauthorized, "Email, phone, or password is incorrect")); return;
+                }
+                if (rows[0]["account_status"].as<std::string>() != "ACTIVE") {
+                    callback(error(k403Forbidden, "This account is suspended. Contact your administrator.")); return;
                 }
                 const auto uid = rows[0]["id"].as<std::string>();
                 const auto ip = clientIp(request);
@@ -481,6 +485,23 @@ void registerAuthRoutes() {
             auto name = field(*body, "name"), phone = field(*body, "phone");
             auto section = field(*body, "section"), address = field(*body, "home_address");
             auto email = field(*body, "email");
+            if (user["role"].asString() == "ADMIN") {
+                auto department = field(*body, "program");
+                if (name.size() < 2 || name.size() > 100 ||
+                    !std::regex_match(email, std::regex(R"([^@\s]+@[^@\s]+\.[^@\s]+)")) ||
+                    address.size() > 240 || department.size() > 120) {
+                    callback(error(k422UnprocessableEntity, "Enter valid administrator details")); return;
+                }
+                try {
+                    app().getDbClient()->execSqlSync(
+                        "UPDATE users SET name=?,email=?,home_address=?,program=? WHERE id=? AND role='ADMIN'",
+                        name, email, address, department, user["id"].asString());
+                    callback(json(currentUser(request)));
+                } catch (const drogon::orm::DrogonDbException &) {
+                    callback(error(k409Conflict, "Email address is already in use"));
+                } catch (...) { callback(error(k500InternalServerError, "Unable to update profile")); }
+                return;
+            }
             const auto accountId = user["account_id"].asString();
             const auto year = user["year_level"].asString();
             const auto program = user["program"].asString();
@@ -513,6 +534,32 @@ void registerAuthRoutes() {
             } catch (...) { callback(error(k500InternalServerError, "Unable to update profile")); }
         },
         {Patch});
+
+    app().registerHandler(
+        "/me/password",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            try { user = currentUser(request); }
+            catch (...) { callback(error(k401Unauthorized, "Sign in required")); return; }
+            const auto body = request->getJsonObject();
+            const auto oldPassword = body ? field(*body, "current_password") : "";
+            const auto newPassword = body ? field(*body, "new_password") : "";
+            if (newPassword.size() < 12 || newPassword.size() > 72) {
+                callback(error(k422UnprocessableEntity, "Use a password of 12 to 72 characters")); return;
+            }
+            try {
+                auto db = app().getDbClient();
+                const auto rows = db->execSqlSync("SELECT password_hash FROM users WHERE id=?", user["id"].asString());
+                if (rows.empty() || !bcrypt::validatePassword(oldPassword, rows[0]["password_hash"].as<std::string>())) {
+                    callback(error(k403Forbidden, "Current password is incorrect")); return;
+                }
+                db->execSqlSync("UPDATE users SET password_hash=? WHERE id=?",
+                    bcrypt::generateHash(newPassword, 12), user["id"].asString());
+                Json::Value result;
+                result["changed"] = true;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to change password")); }
+        }, {Post});
 
     app().registerHandler(
         "/me",
@@ -597,6 +644,62 @@ void registerAuthRoutes() {
             } catch (...) { callback(error(k500InternalServerError, "Unable to save profile photo")); }
         },
         {Patch});
+
+    app().registerHandler(
+        "/students",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value actor;
+            try { actor = currentUser(request); }
+            catch (...) { callback(error(k401Unauthorized, "Sign in required")); return; }
+            if (actor["role"].asString() != "ADMIN") {
+                callback(error(k403Forbidden, "Administrator access required")); return;
+            }
+            try {
+                const auto rows = app().getDbClient()->execSqlSync(
+                    "SELECT id,email,name,account_id,phone,year_level,program,section,home_address,account_status "
+                    "FROM users WHERE role='STUDENT' AND deleted_at IS NULL ORDER BY name");
+                Json::Value result(Json::arrayValue);
+                for (const auto &row : rows) {
+                    Json::Value student;
+                    for (const auto *key : {"id", "email", "name", "account_id", "account_status"})
+                        student[key] = row[key].as<std::string>();
+                    for (const auto *key : {"phone", "year_level", "program", "section", "home_address"})
+                        student[key] = row[key].isNull() ? "" : row[key].as<std::string>();
+                    result.append(student);
+                }
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to load students")); }
+        }, {Get});
+
+    app().registerHandler(
+        "/students/{1}/status",
+        [](const HttpRequestPtr &request, Callback &&callback, const std::string &studentId) {
+            Json::Value actor;
+            try { actor = currentUser(request); }
+            catch (...) { callback(error(k401Unauthorized, "Sign in required")); return; }
+            if (actor["role"].asString() != "ADMIN") {
+                callback(error(k403Forbidden, "Administrator access required")); return;
+            }
+            const auto body = request->getJsonObject();
+            const auto status = body ? field(*body, "status") : "";
+            if (status != "ACTIVE" && status != "SUSPENDED") {
+                callback(error(k422UnprocessableEntity, "Choose active or suspended")); return;
+            }
+            try {
+                const auto changed = app().getDbClient()->execSqlSync(
+                    "UPDATE users SET account_status=? WHERE id=? AND role='STUDENT' AND deleted_at IS NULL",
+                    status, studentId);
+                if (changed.affectedRows() == 0) {
+                    const auto found = app().getDbClient()->execSqlSync(
+                        "SELECT id FROM users WHERE id=? AND role='STUDENT' AND deleted_at IS NULL", studentId);
+                    if (found.empty()) { callback(error(k404NotFound, "Student not found")); return; }
+                }
+                Json::Value result;
+                result["id"] = studentId;
+                result["account_status"] = status;
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to update account")); }
+        }, {Patch});
 
     app().registerHandler(
         "/leaderboard",

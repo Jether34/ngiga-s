@@ -117,6 +117,10 @@ void registerLoanRoutes() {
             if (!body) { callback(error(k400BadRequest, "Invalid JSON body")); return; }
             const auto unitId = bodyString(*body, "unit_id");
             const auto key = bodyString(*body, "idempotency_key");
+            const auto requestedBorrower = bodyString(*body, "borrower_id");
+            if (!requestedBorrower.empty() && user["role"].asString() != "ADMIN") {
+                callback(error(k403Forbidden, "Only administrators can issue for another borrower")); return;
+            }
             std::string due;
             try { due = dueToMysqlUtc(bodyString(*body, "due_at")); }
             catch (const std::runtime_error &e) { callback(error(k422UnprocessableEntity, e.what())); return; }
@@ -126,6 +130,15 @@ void registerLoanRoutes() {
             try {
                 auto db = app().getDbClient();
                 auto tx = db->newTransaction();
+                const auto borrowerId = requestedBorrower.empty() ? user["id"].asString() : requestedBorrower;
+                if (!requestedBorrower.empty()) {
+                    const auto borrower = tx->execSqlSync(
+                        "SELECT id FROM users WHERE id=? AND role='STUDENT' AND deleted_at IS NULL "
+                        "AND email_verified_at IS NOT NULL AND account_status='ACTIVE'", borrowerId);
+                    if (borrower.empty()) {
+                        callback(error(k422UnprocessableEntity, "Choose an active verified student")); return;
+                    }
+                }
                 const auto duplicate = tx->execSqlSync(
                     "SELECT loan_id FROM transactions WHERE idempotency_key=?", key);
                 if (!duplicate.empty() && !duplicate[0]["loan_id"].isNull()) {
@@ -159,7 +172,7 @@ void registerLoanRoutes() {
                 tx->execSqlSync(
                     "INSERT INTO loans(id,user_id,unit_id,borrowed_at,due_at,returned_at,status) "
                     "VALUES(?,?,?,UTC_TIMESTAMP(6),STR_TO_DATE(?,'%Y-%m-%d %H:%i:%s.%f'),NULL,'ACTIVE')",
-                    loanId, user["id"].asString(), unitId, due);
+                    loanId, borrowerId, unitId, due);
                 tx->execSqlSync("INSERT INTO receipts(loan_id,receipt_number,created_at) VALUES(?,?,UTC_TIMESTAMP(6))",
                                 loanId, receiptNumber);
                 tx->execSqlSync(
@@ -210,6 +223,17 @@ void registerLoanRoutes() {
             if (user["role"].asString() != "ADMIN") {
                 callback(error(k403Forbidden, "An administrator must process returns")); return;
             }
+            const auto body = request->getJsonObject();
+            const auto condition = body ? bodyString(*body, "condition") : "GOOD";
+            const auto requestedReturn = body ? bodyString(*body, "returned_at") : "";
+            if (condition != "GOOD" && condition != "MAINTENANCE") {
+                callback(error(k422UnprocessableEntity, "Choose a valid item condition")); return;
+            }
+            std::string returnTime;
+            if (!requestedReturn.empty()) {
+                try { returnTime = dueToMysqlUtc(requestedReturn); }
+                catch (...) { callback(error(k422UnprocessableEntity, "Enter a valid return time")); return; }
+            }
             try {
                 auto db = app().getDbClient();
                 auto tx = db->newTransaction();
@@ -223,11 +247,24 @@ void registerLoanRoutes() {
                     callback(error(k403Forbidden, "Only the borrower or an administrator can return this unit")); return;
                 }
                 const auto loanId = loans[0]["id"].as<std::string>();
+                if (!returnTime.empty()) {
+                    const auto valid = tx->execSqlSync(
+                        "SELECT STR_TO_DATE(?,'%Y-%m-%d %H:%i:%s.%f')>=borrowed_at "
+                        "AND STR_TO_DATE(?,'%Y-%m-%d %H:%i:%s.%f')<=UTC_TIMESTAMP(6)+INTERVAL 1 MINUTE AS valid "
+                        "FROM loans WHERE id=?", returnTime, returnTime, loanId);
+                    if (valid.empty() || valid[0]["valid"].isNull() || valid[0]["valid"].as<int>() != 1) {
+                        callback(error(k422UnprocessableEntity, "Return time must follow borrowing and cannot be in the future")); return;
+                    }
+                }
                 const auto receiveKey = "return-" + loanId;
                 const auto prior = tx->execSqlSync("SELECT id FROM transactions WHERE idempotency_key=?", receiveKey);
                 if (prior.empty()) {
-                    tx->execSqlSync("UPDATE loans SET status='RETURNED',returned_at=UTC_TIMESTAMP(6) WHERE id=?", loanId);
-                    tx->execSqlSync("UPDATE units SET status='AVAILABLE' WHERE id=?", units[0]["id"].as<std::string>());
+                    if (returnTime.empty())
+                        tx->execSqlSync("UPDATE loans SET status='RETURNED',returned_at=UTC_TIMESTAMP(6) WHERE id=?", loanId);
+                    else
+                        tx->execSqlSync("UPDATE loans SET status='RETURNED',returned_at=STR_TO_DATE(?,'%Y-%m-%d %H:%i:%s.%f') WHERE id=?", returnTime, loanId);
+                    tx->execSqlSync("UPDATE units SET status=? WHERE id=?",
+                        condition == "GOOD" ? "AVAILABLE" : "MAINTENANCE", units[0]["id"].as<std::string>());
                     tx->execSqlSync(
                         "INSERT INTO transactions(id,equipment_id,unit_id,loan_id,type,quantity,created_at,actor_id,idempotency_key) "
                         "VALUES(?,?,?,?,'RECEIVE',1,UTC_TIMESTAMP(6),?,?)",

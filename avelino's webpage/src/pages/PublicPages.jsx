@@ -5,7 +5,6 @@ import {
   Camera,
   ArrowRight,
   ArrowLeft,
-  Check,
   AlertCircle,
   PackageCheck,
   Eye,
@@ -16,16 +15,15 @@ import {
   QrCode,
   RefreshCw,
   CheckCircle2,
-  Info,
 } from "lucide-react";
 import {
-  SCHOOL_DOMAINS,
   SCHOOL_NAME,
   products as fixtureProducts,
 } from "../data/fixtures";
-import { demoService } from "../services/demoService";
+import { apiService } from "../services/apiService";
 import { IconButton, Field, Modal, ProductArt } from "../components/ui";
 import { schoolEmail } from "../utils/domain";
+import { privacySections, termsSections } from "../data/policies";
 
 const publicLinks = [
   { label: "Home", path: "/" },
@@ -82,12 +80,6 @@ export function PublicHeader({ navigate, current = "/" }) {
           </a>
         ))}
       </nav>
-      <div className="public-actions">
-        <button className="text-button" onClick={() => navigate("/login")}>Log in</button>
-        <button className="button small" onClick={() => navigate("/signup")}>
-          Sign up <ArrowRight size={16} />
-        </button>
-      </div>
     </header>
   );
 }
@@ -204,8 +196,8 @@ export function Welcome({ navigate }) {
             </button>
           </div>
           <div className="welcome-trust">
-            <ShieldCheck size={17} /> School email access only <span>•</span>{" "}
-            Frontend demo
+            <ShieldCheck size={17} /> Verified account access <span>•</span>{" "}
+            ENcoRE inventory access
           </div>
         </div>
         <div
@@ -344,8 +336,10 @@ export function Auth({ mode, navigate, setSession, notify }) {
     fullName: "",
     studentId: "",
     schoolEmail: "",
+    phone: "",
     yearLevel: "",
     program: "",
+    section: "",
     address: "",
     password: "",
     confirm: "",
@@ -353,7 +347,10 @@ export function Auth({ mode, navigate, setSession, notify }) {
   const [errors, setErrors] = useState({});
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [challenge, setChallenge] = useState(null);
+  const [code, setCode] = useState(Array(6).fill(""));
+  const codeInputs = useRef([]);
+  const [codeBusy, setCodeBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [legalDocument, setLegalDocument] = useState(null);
@@ -361,10 +358,12 @@ export function Auth({ mode, navigate, setSession, notify }) {
     form.fullName.trim().length >= 2 &&
     /^[A-Za-z0-9-]{4,20}$/.test(form.studentId.trim()) &&
     schoolEmail(form.schoolEmail) &&
+    /^\+?[0-9() -]{7,30}$/.test(form.phone.trim()) &&
     Boolean(form.yearLevel) &&
     Boolean(form.program.trim()) &&
+    Boolean(form.section.trim()) &&
     form.address.trim().length >= 8 &&
-    /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/.test(form.password) &&
+    form.password.length >= 12 && form.password.length <= 72 &&
     form.confirm === form.password &&
     agreementAccepted;
   const update = (key, value) => {
@@ -379,20 +378,20 @@ export function Auth({ mode, navigate, setSession, notify }) {
     if (signup && !/^[A-Za-z0-9-]{4,20}$/.test(form.studentId.trim()))
       next.studentId =
         "Enter a valid student ID (4–20 letters, numbers, or hyphens).";
-    if (!schoolEmail(form.schoolEmail))
-      next.schoolEmail = `Use your school email (${SCHOOL_DOMAINS.map((d) => `@${d}`).join(" or ")}).`;
+    if (!schoolEmail(form.schoolEmail)) next.schoolEmail = "Enter a valid email address.";
+    if (signup && !/^\+?[0-9() -]{7,30}$/.test(form.phone.trim()))
+      next.phone = "Enter a valid phone number.";
     if (signup && !form.yearLevel) next.yearLevel = "Select your year level.";
     if (signup && !form.program.trim())
       next.program = "Enter your academic program.";
+    if (signup && !form.section.trim()) next.section = "Enter your section or block.";
     if (signup && form.address.trim().length < 8)
       next.address = "Enter your complete address.";
     if (
-      signup
-        ? !/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/.test(form.password)
-        : !form.password
+      signup ? form.password.length < 12 || form.password.length > 72 : !form.password
     )
       next.password = signup
-        ? "Use 8+ characters with upper and lowercase letters and a number."
+        ? "Use a password of 12 to 72 characters."
         : "Enter your password.";
     if (signup && form.confirm !== form.password)
       next.confirm = "Passwords do not match.";
@@ -407,18 +406,18 @@ export function Auth({ mode, navigate, setSession, notify }) {
     setBusy(true);
     try {
       const response = signup
-        ? await demoService.signUp(form)
-        : await demoService.logIn(form.schoolEmail, form.password);
+        ? await apiService.signUp(form)
+        : await apiService.logIn(form.schoolEmail, form.password);
       if (!response.ok) {
         setAuthError(response.error?.message || "Could not complete this request.");
         return;
       }
-      if (signup) {
-        setSuccess(true);
+      if (response.data.verificationRequired) {
+        setChallenge(response.data);
         return;
       }
       setSession(response.data);
-      notify(`Welcome back, ${response.data.fullName.split(" ")[0]}. Demo session is active.`);
+      notify(`Welcome back, ${response.data.fullName.split(" ")[0]}.`);
       navigate(response.data.role === "ADMIN" ? "/admin/home" : "/student/home");
     } catch {
       setAuthError("Could not reach the account service. Please try again.");
@@ -426,27 +425,31 @@ export function Auth({ mode, navigate, setSession, notify }) {
       setBusy(false);
     }
   };
-  const demoLogin = async (role) => {
-    if (busy) return;
-    setBusy(true);
-    const email =
-      role === "ADMIN"
-        ? "morgan.reyes@university.edu"
-        : "alex.rivera@university.edu";
+  const verifyCode = async (digits) => {
+    if (!challenge || codeBusy || digits.length !== 6) return;
+    setCodeBusy(true);
+    setAuthError("");
     try {
-      const response = await demoService.logIn(email, "Demo123!");
+      const response = await apiService.verify(challenge.challengeId, digits);
       if (!response.ok) {
-        setAuthError(response.error?.message || "Could not open the demo session.");
+        setAuthError(response.error?.message || "Incorrect verification code.");
+        setCode(Array(6).fill(""));
+        codeInputs.current[0]?.focus();
         return;
       }
       setSession(response.data);
-      navigate(role === "ADMIN" ? "/admin/home" : "/student/home");
-      notify(`${role === "ADMIN" ? "Administrator" : "Student"} demo session opened.`);
-    } catch {
-      setAuthError("Could not open the demo session. Please try again.");
-    } finally {
-      setBusy(false);
-    }
+      navigate(response.data.role === "ADMIN" ? "/admin/home" : "/student/home");
+    } finally { setCodeBusy(false); }
+  };
+  const updateCode = (index, value) => {
+    const digits = value.replace(/\D/g, "").slice(0, 6);
+    if (!digits) return;
+    const next = [...code];
+    for (let offset = 0; offset < digits.length && index + offset < 6; offset++) next[index + offset] = digits[offset];
+    setCode(next);
+    const nextIndex = Math.min(index + digits.length, 5);
+    codeInputs.current[nextIndex]?.focus();
+    if (next.every(Boolean)) verifyCode(next.join(""));
   };
   const passwordField = (
     <Field
@@ -454,7 +457,7 @@ export function Auth({ mode, navigate, setSession, notify }) {
       error={errors.password}
       hint={
         signup
-          ? "8+ characters, upper and lowercase letters, and a number"
+          ? "12 to 72 characters"
           : ""
       }
       required
@@ -508,7 +511,7 @@ export function Auth({ mode, navigate, setSession, notify }) {
             </div>
           </div>
         </div>
-        <small>Student Equipment & Inventory Borrowing · Frontend demo</small>
+        <small>ENcoRE · Student Equipment &amp; Inventory Borrowing</small>
       </div>
       <div className="auth-panel">
         <div className="auth-mobile-brand brand">
@@ -522,18 +525,39 @@ export function Auth({ mode, navigate, setSession, notify }) {
         <button className="back-link" onClick={() => navigate("/")}>
           <ArrowLeft size={17} /> Back to welcome
         </button>
-        {success ? (
+        {challenge ? (
           <div className="auth-success">
             <span className="success-emblem">
-              <Check size={32} />
+              <ShieldCheck size={32} />
             </span>
-            <h1>You're all set</h1>
-            <p>
-              Your student account request passed local checks. This demo has no
-              identity service, so no account was created.
-            </p>
-            <button className="button wide" onClick={() => navigate("/login")}>
-              Go to log in <ArrowRight size={18} />
+            <h1>Check your email</h1>
+            <p>Enter the six-digit code sent to {challenge.email}. The code expires in 10 minutes.</p>
+            <div className="verification-boxes" aria-label="Email verification code">
+              {code.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={(element) => { codeInputs.current[index] = element; }}
+                  aria-label={`Digit ${index + 1}`}
+                  inputMode="numeric"
+                  autoComplete={index === 0 ? "one-time-code" : "off"}
+                  maxLength={6}
+                  value={digit}
+                  disabled={codeBusy}
+                  onChange={(event) => updateCode(index, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Backspace") {
+                      const next = [...code];
+                      next[index] = "";
+                      setCode(next);
+                      if (!code[index]) codeInputs.current[Math.max(index - 1, 0)]?.focus();
+                    }
+                  }}
+                />
+              ))}
+            </div>
+            {authError && <div className="inline-error" role="alert">{authError}</div>}
+            <button className="button secondary wide" onClick={() => { setChallenge(null); setCode(Array(6).fill("")); }}>
+              Back to sign in <ArrowRight size={18} />
             </button>
           </div>
         ) : (
@@ -541,8 +565,8 @@ export function Auth({ mode, navigate, setSession, notify }) {
             <h1>{signup ? "Create your account" : "Log in to your account"}</h1>
             <p className="auth-intro">
               {signup
-                ? "Student accounts use your school email and academic details."
-                : "Use your school email to access your equipment workspace."}
+                ? "Create your ENcoRE student account with your academic details."
+                : "Use your ENcoRE email to access your equipment workspace."}
             </p>
             <form onSubmit={submit} noValidate>
               {signup && (
@@ -566,7 +590,7 @@ export function Auth({ mode, navigate, setSession, notify }) {
               <Field
                 label="School email"
                 error={errors.schoolEmail}
-                hint={`Allowed domain${SCHOOL_DOMAINS.length > 1 ? "s" : ""}: ${SCHOOL_DOMAINS.map((d) => `@${d}`).join(", ")}`}
+                hint="Use the email connected to your ENcoRE account."
                 required
               >
                 <input
@@ -574,11 +598,20 @@ export function Auth({ mode, navigate, setSession, notify }) {
                   autoComplete="email"
                   value={form.schoolEmail}
                   onChange={(e) => update("schoolEmail", e.target.value)}
-                  placeholder="you@university.edu"
+                  placeholder="you@fit.edu.ph"
                 />
               </Field>
               {signup && (
                 <>
+                  <div className="form-grid">
+                    <Field label="Phone number" error={errors.phone} required>
+                      <input type="tel" autoComplete="tel" value={form.phone}
+                        onChange={(e) => update("phone", e.target.value)} placeholder="09123456789" />
+                    </Field>
+                    <Field label="Section / block" error={errors.section} required>
+                      <input value={form.section} onChange={(e) => update("section", e.target.value)} placeholder="QA 1" />
+                    </Field>
+                  </div>
                   <div className="form-grid">
                     <Field label="Year level" error={errors.yearLevel} required>
                       <select
@@ -591,8 +624,6 @@ export function Auth({ mode, navigate, setSession, notify }) {
                           "2nd Year",
                           "3rd Year",
                           "4th Year",
-                          "5th Year",
-                          "Graduate",
                         ].map((x) => (
                           <option key={x}>{x}</option>
                         ))}
@@ -642,12 +673,15 @@ export function Auth({ mode, navigate, setSession, notify }) {
                 <button
                   type="button"
                   className="forgot-link"
-                  onClick={() =>
-                    notify(
-                      "Password recovery requires a connected school identity service.",
-                      "error",
-                    )
-                  }
+                  onClick={async () => {
+                    if (!schoolEmail(form.schoolEmail)) {
+                      setAuthError("Enter your account email, then request a reset link.");
+                      return;
+                    }
+                    const response = await apiService.requestPasswordReset(form.schoolEmail);
+                    if (!response.ok) setAuthError(response.error?.message || "Could not request a reset link.");
+                    else notify("Check your email for password reset steps.");
+                  }}
                 >
                   Forgot password?
                 </button>
@@ -698,35 +732,11 @@ export function Auth({ mode, navigate, setSession, notify }) {
               </button>
             </form>
             <p className="auth-switch">
-              {signup ? "Already have an account?" : "New to equip.campus?"}{" "}
+              {signup ? "Already have an account?" : "New to ENcoRE?"}{" "}
               <button onClick={() => navigate(signup ? "/login" : "/signup")}>
                 {signup ? "Log in" : "Sign up"}
               </button>
             </p>
-            {!signup && (
-              <div className="demo-access">
-                <div className="demo-access-title">
-                  <Info size={16} /> Try the frontend demo
-                </div>
-                <p>No server account is required for these preview sessions.</p>
-                <div>
-                  <button
-                    className="button secondary"
-                    disabled={busy}
-                    onClick={() => demoLogin("STUDENT")}
-                  >
-                    Student demo
-                  </button>
-                  <button
-                    className="button secondary"
-                    disabled={busy}
-                    onClick={() => demoLogin("ADMIN")}
-                  >
-                    Admin demo
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         )}
         {signup && legalDocument && (
@@ -736,31 +746,9 @@ export function Auth({ mode, navigate, setSession, notify }) {
             onClose={() => setLegalDocument(null)}
           >
             <div className="signup-legal-document">
-              <div className="signup-legal-draft">
-                <Info size={18} />
-                <span>Draft placeholder content. Institutional and legal review is required before deployment.</span>
-              </div>
-              {legalDocument === "terms" ? (
-                <>
-                  <p>These draft terms describe how the campus equipment borrowing service is intended to work. They are provided for this frontend demonstration and are not a final institutional agreement.</p>
-                  <h3>Eligibility and account use</h3>
-                  <p>Students should use their own school account and provide accurate academic and contact details. Access and borrowing eligibility will be verified by the institution when backend services are connected.</p>
-                  <h3>Borrowing and returns</h3>
-                  <p>Borrowers should check equipment condition when collecting a unit, use it responsibly, and return it by the agreed due date. Administrators may record checkouts, returns, maintenance needs, and overdue items.</p>
-                  <h3>Availability and changes</h3>
-                  <p>Catalog availability and due dates shown in this demo are sample data. Final borrowing rules, fees, and dispute procedures must be supplied and approved by the institution before launch.</p>
-                </>
-              ) : (
-                <>
-                  <p>This draft notice explains the information this service may need for student registration and equipment loans. It is placeholder content for review before deployment.</p>
-                  <h3>Information used</h3>
-                  <p>The registration form asks for your name, student ID, school email, year level, academic program, address, and password. A production service may also record borrowing and return activity.</p>
-                  <h3>How information is used</h3>
-                  <p>The intended uses are account verification, equipment inventory tracking, loan administration, and return reminders. The institution must confirm its lawful basis, retention period, access controls, and contact details in the final policy.</p>
-                  <h3>Current demo behavior</h3>
-                  <p>This frontend demo performs local form checks and does not create a real account or submit registration details to a server. Do not enter a password you use elsewhere.</p>
-                </>
-              )}
+              {(legalDocument === "terms" ? termsSections : privacySections).map(([title, detail]) => (
+                <section key={title}><h3>{title}</h3><p>{detail}</p></section>
+              ))}
             </div>
           </Modal>
         )}
