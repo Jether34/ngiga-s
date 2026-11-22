@@ -32,7 +32,6 @@ import {
   Field,
   Modal,
   PageHead,
-  DemoNote,
   ProductArt,
   ProductCard,
   StatCard,
@@ -100,7 +99,6 @@ export function StudentHome({
           </div>
         </div>
       </div>
-      <DemoNote />
       <div className="stats-grid student-stats">
         <StatCard
           icon={Package}
@@ -858,10 +856,6 @@ export function SettingsPage({ session, role, logout, notify, avatar, updateAvat
         description="Review your profile, security, and preferences."
         action={<span className="avatar settings-header-avatar" aria-label="Current profile picture">{avatar ? <img src={avatar} alt="" /> : initials}</span>}
       />
-      <DemoNote>
-        Profile and security changes are validated locally. They require a
-        connected account service to persist.
-      </DemoNote>
       <div className="settings-grid">
         <div className="panel">
           <div className="panel-title">

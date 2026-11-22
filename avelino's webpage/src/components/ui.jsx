@@ -186,12 +186,6 @@ export function PageHead({ eyebrow, title, description, action }) {
     </div>
   );
 }
-export function DemoNote({
-  children = "Demo data · Changes are previews in this browser session and are not saved to a server.",
-}) {
-  void children;
-  return null;
-}
 export function ProductArt({ product, size = "normal" }) {
   const Icon = icons[product?.icon] || Package;
   return (
