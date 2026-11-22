@@ -319,7 +319,6 @@ function App() {
           route={route}
           navigate={navigate}
           logout={logout}
-          notify={notify}
           products={data.products}
           loans={data.loans}
           receipts={data.receipts}
@@ -392,7 +391,6 @@ function App() {
           route={route}
           navigate={navigate}
           logout={logout}
-          notify={notify}
           products={data.products}
           loans={data.loans}
           receipts={data.receipts}

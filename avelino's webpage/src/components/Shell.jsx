@@ -8,7 +8,7 @@ import {
   Boxes,
 } from "lucide-react";
 import { SCHOOL_NAME } from "../data/fixtures";
-import { Badge, IconButton } from "../components/ui";
+import { IconButton } from "../components/ui";
 import { studentLinks, adminLinks, isOverdue } from "../utils/domain";
 import { HelpCarousel } from "./HelpCarousel";
 
@@ -20,7 +20,6 @@ export function Shell({
   navigate,
   logout,
   children,
-  notify,
   products,
   loans,
   receipts,
@@ -179,7 +178,6 @@ export function Shell({
             </div>
           </div>
           <div className="topbar-right">
-            <Badge tone="warning">Demo data</Badge>
             <div className="notification-wrap" ref={notificationRef}>
               <IconButton
                 icon={Bell}
@@ -247,10 +245,7 @@ export function Shell({
         className="floating-logout"
         title="Log out"
         aria-label="Log out"
-        onClick={() => {
-          logout();
-          notify("Demo session ended.");
-        }}
+        onClick={logout}
       >
         <LogOut size={19} />
       </button>

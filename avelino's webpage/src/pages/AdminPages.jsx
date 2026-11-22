@@ -32,7 +32,6 @@ import {
   SearchBox,
   Modal,
   PageHead,
-  DemoNote,
   ProductArt,
   StatCard,
   Loading,
@@ -111,10 +110,6 @@ export function AdminHome({
           </button>
         }
       />
-      <DemoNote>
-        Dashboard counts are fixture data. Refresh re-reads the demo adapter;
-        live synchronization needs server events.
-      </DemoNote>
       {dataError && <div className="inline-error" role="alert"><AlertCircle size={17} /> {dataError} <button onClick={refresh}>Retry</button></div>}
       <div className="stats-grid admin-stats">
         {stats.map(([Icon, label, value, tone]) => (
@@ -385,10 +380,6 @@ export function ProductForm({ initial, existingProducts, onClose, onSave }) {
             {error}
           </div>
         )}
-        <DemoNote>
-          Product changes stay in this browser session. Receive each physical
-          unit to register item codes.
-        </DemoNote>
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Cancel
@@ -471,10 +462,6 @@ export function AdminProducts({
           </div>
         }
       />
-      <DemoNote>
-        Product edits are local previews. Stock only reflects confirmed fixture
-        units; quantity intent never increases availability.
-      </DemoNote>
       <div className="inventory-toolbar">
         <SearchBox
           value={search}
@@ -855,10 +842,6 @@ export function ReceiveMode({ products, units, notify, code, setCode, refresh })
             <h2>Registration progress</h2>
           </div>
         </div>
-        <DemoNote>
-          Each accepted entry is a local preview. Available stock changes only
-          after an eventual inventory API confirms reception.
-        </DemoNote>
         {entries.length ? (
           <div className="unit-list">
             {entries.map((x, i) => (
@@ -1356,10 +1339,6 @@ export function AdminScan({ products, units, loans, users, notify, refresh }) {
         title="Scan & process"
         description="Register new units, issue equipment, and process returns."
       />
-      <DemoNote>
-        These workflows validate and preview changes. The backend must confirm
-        uniqueness, availability, and transactions.
-      </DemoNote>
       <div className="mode-tabs" role="tablist" aria-label="Scan mode">
         {[
           [Plus, "Receive"],
@@ -1498,10 +1477,6 @@ export function AdminHistory({ transactions, units, products, loans, users }) {
         title="Transaction history"
         description="Review receiving, issue, and return activity across the equipment office."
       />
-      <DemoNote>
-        Transactions come from fixtures. Pagination and authoritative filters
-        belong to the future API.
-      </DemoNote>
       <div className="panel">
         <div className="filter-grid">
           <SearchBox
@@ -1721,10 +1696,6 @@ export function AdminUsers({ loans, units, products, users, notify, refresh }) {
         title="Students"
         description="Review student profiles, account status, and borrowing activity."
       />
-      <DemoNote>
-        Account status changes are local previews. A future admin API must
-        authorize and persist them.
-      </DemoNote>
       <div className="panel">
         <div className="filter-grid users-filters">
           <SearchBox
