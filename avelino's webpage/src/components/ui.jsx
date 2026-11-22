@@ -21,7 +21,7 @@ const icons = { camera: Camera, audio: Mic, laptop: Laptop, video: Video };
 export function Badge({ children, tone = "neutral" }) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }
-export function IconButton({ icon: Icon, label, onClick, className = "", buttonRef }) {
+export function IconButton({ icon: Icon, label, onClick, className = "", buttonRef, ...props }) {
   return (
     <button
       ref={buttonRef}
@@ -30,6 +30,7 @@ export function IconButton({ icon: Icon, label, onClick, className = "", buttonR
       aria-label={label}
       title={label}
       onClick={onClick}
+      {...props}
     >
       <Icon size={18} />
     </button>
@@ -53,7 +54,7 @@ export function Empty({
 export function Notice({ message, onClose }) {
   return (
     message && (
-      <div key={`${message.tone}:${message.text}`} className={`toast ${message.tone || "success"}${message.leaving ? " is-leaving" : ""}`} role="status">
+      <div key={`${message.tone}:${message.text}`} className={`toast ${message.tone || "success"}${message.leaving ? " is-leaving" : ""}`} role={message.tone === "error" ? "alert" : "status"}>
         <span>
           {message.tone === "error" ? (
             <AlertCircle size={18} />

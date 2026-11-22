@@ -27,7 +27,7 @@ void main() {
       const MaterialApp(home: AuthScreen(onLogin: _noop)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('E-QUIP for your campus'), findsOneWidget);
+    expect(find.text('ENcoRE for your campus'), findsOneWidget);
     await tester.tap(find.text('Log In'));
     await tester.pumpAndSettle();
     expect(find.text('Login'), findsOneWidget);

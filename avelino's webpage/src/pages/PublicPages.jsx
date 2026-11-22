@@ -28,6 +28,7 @@ import { IconButton, Field, Modal, ProductArt } from "../components/ui";
 import { schoolEmail } from "../utils/domain";
 
 const publicLinks = [
+  { label: "Home", path: "/" },
   { label: "About Us", path: "/about" },
   { label: "Contact Us", path: "/contact" },
   { label: "Our Goal", path: "/goal" },
@@ -84,7 +85,7 @@ export function PublicHeader({ navigate, current = "/" }) {
       <div className="public-actions">
         <button className="text-button" onClick={() => navigate("/login")}>Log in</button>
         <button className="button small" onClick={() => navigate("/signup")}>
-          Get started <ArrowRight size={16} />
+          Sign up <ArrowRight size={16} />
         </button>
       </div>
     </header>
@@ -99,9 +100,7 @@ export function PublicFooter() {
   );
 }
 
-export function Welcome({ navigate }) {
-  const [selectedVisual, setSelectedVisual] = useState(null);
-  const visualRef = useRef(null);
+function LandingHeadline() {
   const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -130,6 +129,30 @@ export function Welcome({ navigate }) {
     const timer = window.setInterval(tick, headlineStepMs);
     return () => window.clearInterval(timer);
   }, [reducedMotion]);
+
+  return (
+    <h1 className={`welcome-headline${!reducedMotion && headline.fading ? " is-fading" : ""}`} aria-label={headlineLines.join(" ")}>
+      <span className="headline-line" aria-hidden="true">
+        <span className="headline-reserve">{headlineLines[0]}</span>
+        <span className="headline-typed">
+          {headlineLines[0].slice(0, reducedMotion ? headlineLines[0].length : headline.firstCount)}
+          {!reducedMotion && headline.cursorLine === 0 && <span className="headline-cursor" />}
+        </span>
+      </span>
+      <span className="headline-line" aria-hidden="true">
+        <em className="headline-reserve">{headlineLines[1]}</em>
+        <em className="headline-typed">
+          {headlineLines[1].slice(0, reducedMotion ? headlineLines[1].length : headline.secondCount)}
+          {!reducedMotion && headline.cursorLine === 1 && <span className="headline-cursor" />}
+        </em>
+      </span>
+    </h1>
+  );
+}
+
+export function Welcome({ navigate }) {
+  const [selectedVisual, setSelectedVisual] = useState(null);
+  const visualRef = useRef(null);
   const selectVisualOnKey = (event, card) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -161,22 +184,7 @@ export function Welcome({ navigate }) {
           <div className="pill">
             <Sparkles size={15} /> A simpler way to borrow on campus
           </div>
-          <h1 className={`welcome-headline${!reducedMotion && headline.fading ? " is-fading" : ""}`} aria-label={headlineLines.join(" ")}>
-            <span className="headline-line" aria-hidden="true">
-              <span className="headline-reserve">{headlineLines[0]}</span>
-              <span className="headline-typed">
-                {headlineLines[0].slice(0, reducedMotion ? headlineLines[0].length : headline.firstCount)}
-                {!reducedMotion && headline.cursorLine === 0 && <span className="headline-cursor" />}
-              </span>
-            </span>
-            <span className="headline-line" aria-hidden="true">
-              <em className="headline-reserve">{headlineLines[1]}</em>
-              <em className="headline-typed">
-                {headlineLines[1].slice(0, reducedMotion ? headlineLines[1].length : headline.secondCount)}
-                {!reducedMotion && headline.cursorLine === 1 && <span className="headline-cursor" />}
-              </em>
-            </span>
-          </h1>
+          <LandingHeadline />
           <p>
             Find the right equipment, scan its code, and review your loan in a
             few clear steps. Built for every project you have in mind.
@@ -203,7 +211,9 @@ export function Welcome({ navigate }) {
         <div
           ref={visualRef}
           className={`welcome-visual${selectedVisual ? " has-selection" : ""}`}
-          onMouseLeave={() => setSelectedVisual(null)}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse") setSelectedVisual(null);
+          }}
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setSelectedVisual(null);
           }}
@@ -215,7 +225,9 @@ export function Welcome({ navigate }) {
             tabIndex={0}
             aria-label="Show available Canon EOS R50 card"
             aria-pressed={selectedVisual === "back"}
-            onMouseEnter={() => setSelectedVisual("back")}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedVisual((current) => current === "back" ? null : current);
+            }}
             onClick={() => setSelectedVisual("back")}
             onKeyDown={(event) => selectVisualOnKey(event, "back")}
           >
@@ -234,7 +246,9 @@ export function Welcome({ navigate }) {
             tabIndex={0}
             aria-label="Show equipment workspace card"
             aria-pressed={selectedVisual === "main"}
-            onMouseEnter={() => setSelectedVisual("main")}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedVisual((current) => current === "main" ? null : current);
+            }}
             onClick={() => setSelectedVisual("main")}
             onKeyDown={(event) => selectVisualOnKey(event, "main")}
           >
@@ -269,7 +283,9 @@ export function Welcome({ navigate }) {
             tabIndex={0}
             aria-label="Show scan a unit card"
             aria-pressed={selectedVisual === "float"}
-            onMouseEnter={() => setSelectedVisual("float")}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") setSelectedVisual((current) => current === "float" ? null : current);
+            }}
             onClick={() => setSelectedVisual("float")}
             onKeyDown={(event) => selectVisualOnKey(event, "float")}
           >
@@ -389,38 +405,47 @@ export function Auth({ mode, navigate, setSession, notify }) {
     event.preventDefault();
     if (!validate() || busy) return;
     setBusy(true);
-    const response = signup
-      ? await demoService.signUp(form)
-      : await demoService.logIn(form.schoolEmail, form.password);
-    setBusy(false);
-    if (!response.ok) {
-      setAuthError(response.error.message);
-      return;
+    try {
+      const response = signup
+        ? await demoService.signUp(form)
+        : await demoService.logIn(form.schoolEmail, form.password);
+      if (!response.ok) {
+        setAuthError(response.error?.message || "Could not complete this request.");
+        return;
+      }
+      if (signup) {
+        setSuccess(true);
+        return;
+      }
+      setSession(response.data);
+      notify(`Welcome back, ${response.data.fullName.split(" ")[0]}. Demo session is active.`);
+      navigate(response.data.role === "ADMIN" ? "/admin/home" : "/student/home");
+    } catch {
+      setAuthError("Could not reach the account service. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    if (signup) {
-      setSuccess(true);
-      return;
-    }
-    setSession(response.data);
-    notify(
-      `Welcome back, ${response.data.fullName.split(" ")[0]}. Demo session is active.`,
-    );
-    navigate(response.data.role === "ADMIN" ? "/admin/home" : "/student/home");
   };
   const demoLogin = async (role) => {
+    if (busy) return;
     setBusy(true);
     const email =
       role === "ADMIN"
         ? "morgan.reyes@university.edu"
         : "alex.rivera@university.edu";
-    const response = await demoService.logIn(email, "Demo123!");
-    setBusy(false);
-    if (response.ok) {
+    try {
+      const response = await demoService.logIn(email, "Demo123!");
+      if (!response.ok) {
+        setAuthError(response.error?.message || "Could not open the demo session.");
+        return;
+      }
       setSession(response.data);
       navigate(role === "ADMIN" ? "/admin/home" : "/student/home");
-      notify(
-        `${role === "ADMIN" ? "Administrator" : "Student"} demo session opened.`,
-      );
+      notify(`${role === "ADMIN" ? "Administrator" : "Student"} demo session opened.`);
+    } catch {
+      setAuthError("Could not open the demo session. Please try again.");
+    } finally {
+      setBusy(false);
     }
   };
   const passwordField = (

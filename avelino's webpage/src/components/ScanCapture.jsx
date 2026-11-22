@@ -13,34 +13,46 @@ export function ScanCapture({
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const detectorRef = useRef(null);
+  const requestRef = useRef(0);
   const stop = () => {
+    requestRef.current += 1;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     detectorRef.current = null;
     setCameraState("idle");
   };
   useEffect(
     () => () => {
+      requestRef.current += 1;
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
     },
     [],
   );
   const start = async () => {
+    if (cameraState === "requesting" || cameraState === "scanning" || cameraState === "preview") return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState("unavailable");
       return;
     }
+    const request = ++requestRef.current;
     setCameraState("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
+      if (request !== requestRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      if (request !== requestRef.current) return;
       if ("BarcodeDetector" in window) {
         detectorRef.current = new window.BarcodeDetector({
           formats: ["qr_code", "code_128", "code_39", "ean_13"],
@@ -48,6 +60,10 @@ export function ScanCapture({
         setCameraState("scanning");
       } else setCameraState("preview");
     } catch (error) {
+      if (request !== requestRef.current) return;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
       setCameraState(
         error.name === "NotAllowedError" ? "denied" : "unavailable",
       );
@@ -56,10 +72,13 @@ export function ScanCapture({
   useEffect(() => {
     if (cameraState !== "scanning") return;
     let canceled = false;
+    let detecting = false;
     const timer = setInterval(async () => {
-      if (!videoRef.current || !detectorRef.current || canceled) return;
+      if (!videoRef.current || !detectorRef.current || canceled || detecting) return;
+      detecting = true;
       try {
         const found = await detectorRef.current.detect(videoRef.current);
+        if (canceled) return;
         if (found[0]?.rawValue) {
           canceled = true;
           setCode(found[0].rawValue);
@@ -68,6 +87,8 @@ export function ScanCapture({
         }
       } catch {
         /* keep manual entry available */
+      } finally {
+        detecting = false;
       }
     }, 500);
     return () => {

@@ -172,7 +172,7 @@ void registerLoanRoutes() {
                 commit(tx);
                 const auto email = result["email"].asString();
                 const auto number = result["receipt_number"].asString();
-                const auto details = "E-QUIP loan receipt\nReceipt: " + number +
+                const auto details = "ENcoRE loan receipt\nReceipt: " + number +
                     "\nBorrower: " + result["borrower_name"].asString() +
                     "\nStudent / User ID: " + result["borrower_id"].asString() +
                     "\nEquipment: " + result["equipment_name"].asString() +
@@ -180,7 +180,7 @@ void registerLoanRoutes() {
                     "\nBorrowed: " + result["borrowed_at"].asString() +
                     "\nReturn by: " + result["due_at"].asString() +
                     "\nStatus: ACTIVE\n";
-                const auto html = std::string("<!doctype html><html><meta charset='utf-8'><style>body{font:14px Arial;max-width:380px;margin:36px auto;color:#0f0f0f}h1{text-align:center;color:#0b3d2e;font-size:22px}small{display:block;text-align:center;margin-bottom:36px}table{width:100%;border-collapse:collapse}td{padding:12px 4px;border-bottom:1px solid #dce7df}td:first-child{font-weight:bold;width:42%}.due{margin-top:25px;padding:14px;background:#edf5ef;color:#0b3d2e}</style><h1>E-QUIP</h1><small>EQUIPMENT RECEIPT</small><table>") +
+                const auto html = std::string("<!doctype html><html><meta charset='utf-8'><style>body{font:14px Arial;max-width:380px;margin:36px auto;color:#0f0f0f}h1{text-align:center;color:#0b3d2e;font-size:22px}small{display:block;text-align:center;margin-bottom:36px}table{width:100%;border-collapse:collapse}td{padding:12px 4px;border-bottom:1px solid #dce7df}td:first-child{font-weight:bold;width:42%}.due{margin-top:25px;padding:14px;background:#edf5ef;color:#0b3d2e}</style><h1>ENcoRE</h1><small>EQUIPMENT RECEIPT</small><table>") +
                     "<tr><td>Receipt</td><td>" + htmlEscape(number) + "</td></tr>" +
                     "<tr><td>Borrower</td><td>" + htmlEscape(result["borrower_name"].asString()) + "</td></tr>" +
                     "<tr><td>Student ID</td><td>" + htmlEscape(result["borrower_id"].asString()) + "</td></tr>" +
@@ -190,7 +190,7 @@ void registerLoanRoutes() {
                     "</table><div class='due'><strong>Return by:</strong> " +
                     htmlEscape(result["due_at"].asString()) + "</div></html>";
                 std::thread([email, number, details, html]() {
-                    if (!sendEmail(email, "E-QUIP loan receipt " + number,
+                    if (!sendEmail(email, "ENcoRE loan receipt " + number,
                                    "Your item has been borrowed. Please return it by the time shown in the attached receipt.\n\n" + details,
                                    number + ".html", html))
                         LOG_ERROR << "Loan receipt email failed for " << number;

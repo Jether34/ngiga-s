@@ -5,33 +5,12 @@ React, JavaScript (JSX), regular CSS, Vite, and Lucide React implementation of t
 ## Run locally
 
 ```bash
-cd "avelino's webpage"
+cd frontend
 npm install
 npm run dev
 ```
 
-Open the local address printed by Vite, normally `http://localhost:5173`. For a production build, run `npm run build` and `npm run preview`. Run `npm run lint` for static checks.
-
-## Cloudflare deployment
-
-This is a Vite application. Deploy the **built `dist` directory**, not the source folder. The source `index.html` references `/src/main.jsx`, which a browser cannot run directly. The Worker configuration in `wrangler.jsonc` serves `./dist` and falls back to `index.html` for application routes.
-
-This copy deploys to its own `ngiga-avelino-demo` Worker. The recovered portfolio remains on the separate `lingering-wave-20b9` Worker.
-
-For the `Jether` branch of `ngiga-s`, set these Cloudflare **Workers Builds** settings:
-
-| Setting | Value |
-| --- | --- |
-| Production branch | `Jether` |
-| Root directory | `avelino's webpage` |
-| Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
-
-Cloudflare must install the npm dependencies before the build. From a local checkout, the equivalent commands are `npm ci`, `npm run build`, then `npx wrangler deploy`, all run inside `avelino's webpage`.
-
-If deploying the original `Avelino` branch instead, its root directory is `frontend`. Copy the same `wrangler.jsonc` into that directory before using Workers Builds. For **Cloudflare Pages** rather than Workers, use the same branch and root directory, build command `npm run build`, and build output directory `dist`.
-
-If uploading files manually in the Cloudflare dashboard, select the contents of `dist` after building. Uploading the project source creates a blank page because the JSX and CSS have not been bundled.
+Open the local address printed by Vite, normally `http://localhost:5173`. For a production build, run `npm run build` and `npm run preview`. Run `npm run lint` for static checks and `npm test` for service and validation regression checks.
 
 ## Demo access
 
@@ -43,6 +22,8 @@ The Log In page has **Student demo** and **Admin demo** buttons. These create an
 
 All fixture data and workflow results are previews. Borrowing, receiving, issuing, returning, signup, product edits, profile edits, account status changes, and password validation do **not** persist to a server. Receipt file and email actions stay unavailable until a receipt service supplies real artifacts and delivery state. Refresh reloads fixture data.
 
+Profile pictures are validated, resized to at most 256 pixels, and stored in this browser's local storage for the current demo account. Theme preference is also stored locally; System default follows the device setting. Neither preference syncs to a server or another device.
+
 ## Configuration
 
 Copy `.env.example` to `.env.local` and adjust the school name and permitted school email domains. The default `university.edu` is illustrative. Camera scanning uses the browser's `getUserMedia` and `BarcodeDetector` when available; manual code entry always remains available. Camera permission usually requires localhost or HTTPS.
@@ -50,6 +31,16 @@ Copy `.env.example` to `.env.local` and adjust the school name and permitted sch
 ## Integration points
 
 `src/services/demoService.js` is the service boundary for authentication, catalog, unit lookup, loans, transactions, users, receipts, low-stock reporting, and future live-event subscriptions. Replace its fixture-backed method bodies with API requests that return the same `{ ok, data }` or `{ ok: false, error }` shape. Server authorization, unique unit codes, atomic issue and return operations, stock consistency, receipt generation, Gmail delivery, and live synchronization all require backend services.
+
+## Deployment preparation
+
+- Run `npm run lint` and `npm run build`; publish the generated `dist/` directory when deploying the frontend.
+- Configure the host to serve `index.html` for client routes such as `/about`, `/login`, `/student/home`, and `/admin/products`. Vite preview supplies this fallback locally; a static host needs an equivalent rewrite.
+- `VITE_SCHOOL_NAME` and `VITE_SCHOOL_DOMAINS` are embedded at build time. Set them before building, and rebuild after changing them. Do not put secrets in `VITE_` variables.
+- Serve over HTTPS for camera access outside localhost. Manual item-code entry remains available when camera permissions or `BarcodeDetector` are unavailable.
+- Replace the demo service with authenticated APIs before accepting real accounts or inventory transactions. The current in-browser session, local validations, contact preview, and fixture data are not production persistence or authorization.
+- Have the institution review and replace the draft Terms of Use, Privacy Policy, sample contact details, and school email domain before public launch.
+- The interface uses Google Fonts with local font fallbacks. If external font requests are restricted, self-host the fonts or use the fallbacks.
 
 ## Project structure
 
