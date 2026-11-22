@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   terms_accepted_at DATETIME(6) NULL,
   deleted_at DATETIME(6) NULL,
   email_verified_at DATETIME(6) NULL,
+  account_status ENUM('ACTIVE','SUSPENDED') NOT NULL DEFAULT 'ACTIVE',
   role ENUM('ADMIN','STUDENT','FACULTY','USER') NOT NULL
 ) ENGINE=InnoDB;
 
@@ -56,6 +57,8 @@ CREATE TABLE IF NOT EXISTS equipment (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(160) NOT NULL,
   category VARCHAR(100) NOT NULL,
+  description TEXT NULL,
+  archived TINYINT(1) NOT NULL DEFAULT 0,
   min_stock INT UNSIGNED NOT NULL DEFAULT 0,
   image_data MEDIUMTEXT NULL
 ) ENGINE=InnoDB;
@@ -64,6 +67,8 @@ CREATE TABLE IF NOT EXISTS units (
   id VARCHAR(36) PRIMARY KEY,
   equipment_id VARCHAR(64) NOT NULL,
   serial VARCHAR(160) NOT NULL UNIQUE,
+  manufacturer_serial VARCHAR(160) NULL,
+  received_at DATETIME(6) NULL,
   status ENUM('AVAILABLE','ISSUED','MAINTENANCE') NOT NULL,
   CONSTRAINT fk_units_equipment FOREIGN KEY (equipment_id) REFERENCES equipment(id),
   INDEX idx_units_equipment_status (equipment_id, status)

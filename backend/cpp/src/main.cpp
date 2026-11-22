@@ -9,6 +9,10 @@ std::string env(const char *name, const char *fallback) {
     const auto *value = std::getenv(name);
     return value && *value ? value : fallback;
 }
+bool allowedWebOrigin(const std::string &origin) {
+    return origin == "https://ngiga-avelino-demo.garquejether681.workers.dev" ||
+           origin == "http://localhost:5173" || origin == "http://127.0.0.1:5173";
+}
 }
 
 int main(int argc, char **argv) {
@@ -30,6 +34,26 @@ int main(int argc, char **argv) {
         .setThreadNum(4)
         .addListener("0.0.0.0",
                      static_cast<unsigned short>(std::stoi(env("PORT", "8000"))));
+    drogon::app().registerSyncAdvice([](const drogon::HttpRequestPtr &request) {
+        if (request->method() != drogon::Options ||
+            !allowedWebOrigin(request->getHeader("origin"))) return drogon::HttpResponsePtr{};
+        auto response = drogon::HttpResponse::newHttpResponse();
+        response->setStatusCode(drogon::k204NoContent);
+        response->addHeader("Access-Control-Allow-Origin", request->getHeader("origin"));
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+        response->addHeader("Access-Control-Max-Age", "600");
+        response->addHeader("Vary", "Origin");
+        return response;
+    });
+    drogon::app().registerPreSendingAdvice([](const drogon::HttpRequestPtr &request,
+                                               const drogon::HttpResponsePtr &response) {
+        const auto origin = request->getHeader("origin");
+        if (allowedWebOrigin(origin)) {
+            response->addHeader("Access-Control-Allow-Origin", origin);
+            response->addHeader("Vary", "Origin");
+        }
+    });
     stockroom::registerAuthRoutes();
     stockroom::registerInventoryRoutes();
     stockroom::registerLoanRoutes();

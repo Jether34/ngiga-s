@@ -4,6 +4,7 @@
   "dependencies": [
     { "name": "drogon", "features": ["mysql"] },
     "jwt-cpp",
-    "nlohmann-json"
+    "nlohmann-json",
+    "curl"
   ]
 }

@@ -15,6 +15,8 @@ Json::Value asInventory(const drogon::orm::Row &row) {
     item["id"] = row["id"].as<std::string>();
     item["name"] = row["name"].as<std::string>();
     item["category"] = row["category"].as<std::string>();
+    item["description"] = row["description"].isNull() ? "" : row["description"].as<std::string>();
+    item["archived"] = row["archived"].as<int>() != 0;
     item["min_stock"] = row["min_stock"].as<int>();
     item["total"] = row["total"].as<int>();
     item["available"] = row["available"].as<int>();
@@ -26,7 +28,7 @@ Json::Value asInventory(const drogon::orm::Row &row) {
 }
 
 const std::string inventorySql =
-    "SELECT e.id,e.name,e.category,e.min_stock,e.image_data,COUNT(u.id) AS total,"
+    "SELECT e.id,e.name,e.category,e.description,e.archived,e.min_stock,e.image_data,COUNT(u.id) AS total,"
     "COALESCE(SUM(u.status='AVAILABLE'),0) AS available,"
     "COALESCE(SUM(u.status='ISSUED'),0) AS issued,"
     "COALESCE(SUM(u.status='MAINTENANCE'),0) AS maintenance,"
@@ -93,6 +95,29 @@ void registerInventoryRoutes() {
         {Get});
 
     app().registerHandler(
+        "/units",
+        [](const HttpRequestPtr &request, Callback &&callback) {
+            Json::Value user;
+            if (!requireUser(request, callback, user)) return;
+            try {
+                const auto rows = app().getDbClient()->execSqlSync(
+                    "SELECT id,equipment_id,serial,status,manufacturer_serial,"
+                    "IF(received_at IS NULL,NULL,DATE_FORMAT(received_at,'%Y-%m-%d')) AS received_at "
+                    "FROM units ORDER BY serial");
+                Json::Value result(Json::arrayValue);
+                for (const auto &row : rows) {
+                    Json::Value unit;
+                    for (const auto *key : {"id", "equipment_id", "serial", "status"})
+                        unit[key] = row[key].as<std::string>();
+                    for (const auto *key : {"manufacturer_serial", "received_at"})
+                        unit[key] = row[key].isNull() ? "" : row[key].as<std::string>();
+                    result.append(unit);
+                }
+                callback(json(result));
+            } catch (...) { callback(error(k500InternalServerError, "Unable to load units")); }
+        }, {Get});
+
+    app().registerHandler(
         "/units/{1}",
         [](const HttpRequestPtr &request, Callback &&callback, const std::string &barcode) {
             Json::Value user;
@@ -126,13 +151,19 @@ void registerInventoryRoutes() {
                 if (rows.empty()) { callback(error(k404NotFound, "Product not found")); return; }
                 auto result = asInventory(rows[0]);
                 const auto units = db->execSqlSync(
-                    "SELECT id,serial,status FROM units WHERE equipment_id=? ORDER BY serial", id);
+                    "SELECT id,serial,status,manufacturer_serial,"
+                    "IF(received_at IS NULL,NULL,DATE_FORMAT(received_at,'%Y-%m-%d')) AS received_at "
+                    "FROM units WHERE equipment_id=? ORDER BY serial", id);
                 Json::Value unitArray(Json::arrayValue);
                 for (const auto &row : units) {
                     Json::Value unit;
                     unit["id"] = row["id"].as<std::string>();
                     unit["serial"] = row["serial"].as<std::string>();
                     unit["status"] = row["status"].as<std::string>();
+                    unit["manufacturer_serial"] = row["manufacturer_serial"].isNull()
+                        ? "" : row["manufacturer_serial"].as<std::string>();
+                    unit["received_at"] = row["received_at"].isNull()
+                        ? "" : row["received_at"].as<std::string>();
                     unitArray.append(unit);
                 }
                 result["units"] = unitArray;
@@ -169,16 +200,17 @@ void registerInventoryRoutes() {
             const auto body = request->getJsonObject();
             if (!body) { callback(error(k400BadRequest, "Invalid JSON body")); return; }
             const auto id = value(*body, "id"), name = value(*body, "name"), category = value(*body, "category");
+            const auto description = value(*body, "description");
             const int minStock = body->isMember("min_stock") && (*body)["min_stock"].isInt()
                                      ? (*body)["min_stock"].asInt() : 0;
-            if (id.empty() || name.empty() || category.empty() || minStock < 0) {
+            if (id.empty() || name.empty() || category.empty() || description.size() > 2000 || minStock < 0) {
                 callback(error(k422UnprocessableEntity, "Product ID, name, category, and valid minimum stock are required")); return;
             }
             try {
                 auto tx = app().getDbClient()->newTransaction();
                 tx->execSqlSync(
-                    "INSERT INTO equipment(id,name,category,min_stock) VALUES(?,?,?,?)",
-                    id, name, category, minStock);
+                    "INSERT INTO equipment(id,name,category,description,min_stock) VALUES(?,?,?,?,?)",
+                    id, name, category, description, minStock);
                 auto rows = tx->execSqlSync(
                     inventorySql + "WHERE e.id=? GROUP BY e.id", id);
                 auto result = asInventory(rows[0]);
@@ -196,7 +228,13 @@ void registerInventoryRoutes() {
             if (!requireAdmin(request, callback, user)) return;
             const auto body = request->getJsonObject();
             const auto serial = body ? value(*body, "serial") : "";
+            const auto manufacturerSerial = body ? value(*body, "manufacturer_serial") : "";
+            const auto receivedAt = body ? value(*body, "received_at") : "";
             if (serial.empty()) { callback(error(k422UnprocessableEntity, "Serial/barcode cannot be blank")); return; }
+            if (manufacturerSerial.size() > 160 ||
+                (!receivedAt.empty() && !std::regex_match(receivedAt, std::regex(R"(\d{4}-\d{2}-\d{2})")))) {
+                callback(error(k422UnprocessableEntity, "Enter a valid serial and received date")); return;
+            }
             try {
                 auto db = app().getDbClient();
                 auto tx = db->newTransaction();
@@ -205,8 +243,9 @@ void registerInventoryRoutes() {
                 const auto unitId = utils::getUuid();
                 const auto transactionId = utils::getUuid();
                 const auto key = "unit-receive-" + unitId;
-                tx->execSqlSync("INSERT INTO units(id,equipment_id,serial,status) VALUES(?,?,?,'AVAILABLE')",
-                                unitId, equipmentId, serial);
+                tx->execSqlSync("INSERT INTO units(id,equipment_id,serial,manufacturer_serial,received_at,status) "
+                                "VALUES(?,?,?,?,IF(?='',UTC_TIMESTAMP(6),STR_TO_DATE(?,'%Y-%m-%d')),'AVAILABLE')",
+                                unitId, equipmentId, serial, manufacturerSerial, receivedAt, receivedAt);
                 tx->execSqlSync(
                     "INSERT INTO transactions(id,equipment_id,unit_id,loan_id,type,quantity,created_at,actor_id,idempotency_key) "
                     "VALUES(?,?,?,NULL,'RECEIVE',1,UTC_TIMESTAMP(6),?,?)",
@@ -215,6 +254,8 @@ void registerInventoryRoutes() {
                 out["id"] = unitId;
                 out["equipment_id"] = equipmentId;
                 out["serial"] = serial;
+                out["manufacturer_serial"] = manufacturerSerial;
+                out["received_at"] = receivedAt;
                 out["status"] = "AVAILABLE";
                 Json::Value event;
                 event["equipment_id"] = equipmentId;
@@ -241,15 +282,23 @@ void registerInventoryRoutes() {
             const auto name = value(*body, "name"), category = value(*body, "category");
             const int minStock = body->isMember("min_stock") && (*body)["min_stock"].isInt()
                                      ? (*body)["min_stock"].asInt() : 0;
-            if (name.empty() || category.empty() || minStock < 0) {
+            if (name.empty() || category.empty() || minStock < 0 ||
+                (body->isMember("description") && value(*body, "description").size() > 2000)) {
                 callback(error(k422UnprocessableEntity, "Product name, category, and minimum stock are required")); return;
             }
             try {
                 auto db = app().getDbClient();
                 auto tx = db->newTransaction();
+                const auto existing = tx->execSqlSync(
+                    "SELECT description,archived FROM equipment WHERE id=? FOR UPDATE", id);
+                if (existing.empty()) { callback(error(k404NotFound, "Product not found")); return; }
+                const auto description = body->isMember("description") ? value(*body, "description")
+                    : (existing[0]["description"].isNull() ? "" : existing[0]["description"].as<std::string>());
+                const bool archived = body->isMember("archived") && (*body)["archived"].isBool()
+                    ? (*body)["archived"].asBool() : existing[0]["archived"].as<int>() != 0;
                 const auto changed = tx->execSqlSync(
-                    "UPDATE equipment SET name=?,category=?,min_stock=? WHERE id=?",
-                    name, category, minStock, id);
+                    "UPDATE equipment SET name=?,category=?,description=?,archived=?,min_stock=? WHERE id=?",
+                    name, category, description, archived, minStock, id);
                 if (changed.affectedRows() == 0) {
                     const auto found = tx->execSqlSync("SELECT id FROM equipment WHERE id=?", id);
                     if (found.empty()) { callback(error(k404NotFound, "Product not found")); return; }

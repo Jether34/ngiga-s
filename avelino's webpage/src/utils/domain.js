@@ -6,7 +6,6 @@ import {
   Users,
   Settings,
 } from "lucide-react";
-import { SCHOOL_DOMAINS } from "../data/fixtures";
 
 export const studentLinks = [
   ["Home", House],
@@ -42,7 +41,7 @@ export const schoolEmail = (value) => {
   const local = email.slice(0, separator);
   const domain = email.slice(separator + 1);
   return /^[a-z0-9](?:[a-z0-9._%+-]*[a-z0-9])?$/.test(local) &&
-    SCHOOL_DOMAINS.some((allowed) => domain === allowed.toLowerCase());
+    /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain);
 };
 export const number = (value) => Number(value).toLocaleString("en-PH");
 export const productOf = (unit, products) =>

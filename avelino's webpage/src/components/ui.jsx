@@ -12,7 +12,6 @@ import {
   PackageOpen,
   RefreshCw,
   CheckCircle2,
-  Info,
 } from "lucide-react";
 import { number } from "../utils/domain";
 
@@ -190,18 +189,16 @@ export function PageHead({ eyebrow, title, description, action }) {
 export function DemoNote({
   children = "Demo data · Changes are previews in this browser session and are not saved to a server.",
 }) {
-  return (
-    <div className="demo-note">
-      <Info size={16} />
-      <span>{children}</span>
-    </div>
-  );
+  void children;
+  return null;
 }
 export function ProductArt({ product, size = "normal" }) {
   const Icon = icons[product?.icon] || Package;
   return (
     <div className={`product-art ${product?.icon || "generic"} ${size}`}>
-      <Icon size={size === "large" ? 62 : 37} strokeWidth={1.35} />
+      {product?.image
+        ? <img src={`data:image/${product.image.startsWith("iVBOR") ? "png" : "jpeg"};base64,${product.image}`} alt={product.name} />
+        : <Icon size={size === "large" ? 62 : 37} strokeWidth={1.35} />}
     </div>
   );
 }
@@ -246,7 +243,7 @@ export function StatCard({ icon: Icon, label, value, sub, tone = "amber" }) {
 export function Loading() {
   return (
     <div className="loading">
-      <RefreshCw size={22} className="spin" /> Loading demo data…
+      <RefreshCw size={22} className="spin" /> Loading data…
     </div>
   );
 }

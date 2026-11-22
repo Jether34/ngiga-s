@@ -58,7 +58,7 @@ export function ProductDetail({
           ))
         ) : (
           <Empty
-            title="No fixture units"
+            title="No units available"
             text="Receiving new units requires a backend to confirm stock."
           />
         )}

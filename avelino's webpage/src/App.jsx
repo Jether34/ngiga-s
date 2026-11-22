@@ -1,12 +1,6 @@
 import { Component, Suspense, lazy, useState, useEffect, useCallback, useRef } from "react";
 import { Search, ArrowRight } from "lucide-react";
-import {
-  loans as fixtureLoans,
-  products as fixtureProducts,
-  transactions as fixtureTransactions,
-  units as fixtureUnits,
-} from "./data/fixtures";
-import { demoService } from "./services/demoService";
+import { apiService } from "./services/apiService";
 import { readAvatar, readTheme, saveAvatar, saveTheme } from "./utils/preferences";
 import { Loading, Notice } from "./components/ui";
 
@@ -29,15 +23,9 @@ import "./App.css";
 
 const currentLocation = () => window.location.pathname + window.location.search;
 
-function readDemoSession() {
-  try {
-    const user = JSON.parse(sessionStorage.getItem("equip-demo-session"));
-    return user && ["STUDENT", "ADMIN"].includes(user.role) &&
-      typeof user.id === "string" && typeof user.fullName === "string" &&
-      typeof user.schoolEmail === "string" ? user : null;
-  } catch {
-    return null;
-  }
+function readSession() {
+  const user = apiService.storedUser();
+  return apiService.hasSession() && user && ["STUDENT", "ADMIN"].includes(user.role) ? user : null;
 }
 
 function NotFound({ navigate, session }) {
@@ -101,12 +89,12 @@ function App() {
   const enterTimer = useRef(null);
   const toastTimer = useRef(null);
   const toastExitTimer = useRef(null);
-  const [session, setSessionState] = useState(readDemoSession);
+  const [session, setSessionState] = useState(readSession);
   const [helpTipIndexes, setHelpTipIndexes] = useState({ ADMIN: 0, STUDENT: 0 });
   const setHelpTipIndex = useCallback((role, index) => {
     setHelpTipIndexes((current) => ({ ...current, [role]: index }));
   }, []);
-  const [avatar, setAvatar] = useState(() => readAvatar(readDemoSession()?.schoolEmail));
+  const [avatar, setAvatar] = useState(() => readAvatar(readSession()?.schoolEmail));
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
@@ -120,15 +108,25 @@ function App() {
     setTheme(value);
     saveTheme(value);
   };
-  const updateAvatar = (dataUrl) => {
+  const updateAvatar = async (dataUrl) => {
+    const response = await apiService.saveAvatar(dataUrl);
+    if (!response.ok) throw new Error(response.error?.message || "Could not save profile photo.");
     saveAvatar(session.schoolEmail, dataUrl);
     setAvatar(dataUrl);
   };
+  useEffect(() => {
+    if (!session) return;
+    apiService.getAvatar().then((response) => {
+      if (response.ok) setAvatar(response.data);
+    });
+  }, [session?.id]);
   const [data, setData] = useState({
-    products: fixtureProducts,
-    units: fixtureUnits,
-    loans: fixtureLoans,
-    transactions: fixtureTransactions,
+    products: [],
+    units: [],
+    loans: [],
+    transactions: [],
+    receipts: [],
+    users: [],
   });
   const [loading, setLoading] = useState(false);
   const [dataError, setDataError] = useState("");
@@ -185,50 +183,71 @@ function App() {
   const setSession = (user) => {
     setSessionState(user);
     setAvatar(readAvatar(user?.schoolEmail));
-    try {
-      sessionStorage.setItem("equip-demo-session", JSON.stringify(user));
-    } catch {
-      notify("Demo session is active, but browser storage is unavailable.", "error");
-    }
   };
   const logout = async () => {
     try {
-      await demoService.logOut();
+      await apiService.logOut();
     } catch {
-      // A failed network sign-out must not leave a demo session open locally.
+      // Clear this browser session even if a network request fails.
     } finally {
       setSessionState(null);
       setAvatar("");
-      try { sessionStorage.removeItem("equip-demo-session"); } catch { /* storage may be disabled */ }
+      setData({ products: [], units: [], loans: [], transactions: [], receipts: [], users: [] });
       navigate("/");
     }
   };
   const refresh = async () => {
+    if (!session) return;
     setLoading(true);
     setDataError("");
     try {
-      const [p, u, l, t] = await Promise.all([
-        demoService.listProducts(),
-        demoService.listUnits(),
-        demoService.listLoans(),
-        demoService.listTransactions(),
+      const [p, u] = await Promise.all([
+        apiService.listProducts(),
+        apiService.listUnits(),
       ]);
-      const failed = [p, u, l, t].find((item) => !item.ok);
+      const s = session.role === "ADMIN" ? await apiService.listStudents() : { ok: true, data: [] };
+      const r = await apiService.listReceipts();
+      const l = await apiService.listLoans();
+      const t = await apiService.listTransactions();
+      const failed = [p, u, s, r, l, t].find((item) => !item.ok);
       if (failed) throw new Error(failed.error.message);
       setData({
         products: p.data,
         units: u.data,
         loans: l.data,
         transactions: t.data,
+        receipts: r.data,
+        users: session.role === "ADMIN" ? [...s.data, session] : s.data,
       });
-      notify("Demo fixture data refreshed.");
     } catch (error) {
       setDataError(error.message || "Could not load catalog data.");
-      notify("Could not refresh data. Try again.", "error");
+      notify(error.message || "Could not refresh data. Try again.", "error");
     } finally {
       setLoading(false);
     }
   };
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    apiService.currentUser().then((response) => {
+      if (!active) return;
+      if (!response.ok) {
+        apiService.clearSession();
+        setSessionState(null);
+        setData({ products: [], units: [], loans: [], transactions: [], receipts: [], users: [] });
+        window.history.replaceState({}, "", "/login");
+        transitionTo("/login");
+      } else if (response.data.schoolEmail !== session.schoolEmail || response.data.fullName !== session.fullName) {
+        setSessionState(response.data);
+      }
+    });
+    return () => { active = false; };
+  }, [session?.id, session?.schoolEmail, session?.fullName, transitionTo]);
+  useEffect(() => {
+    if (!session) return undefined;
+    const timer = window.setTimeout(() => refresh(), 0);
+    return () => window.clearTimeout(timer);
+  }, [session?.id]);
   useEffect(() => {
     const onPop = () => transitionTo(currentLocation());
     window.addEventListener("popstate", onPop);
@@ -274,7 +293,7 @@ function App() {
           />
         );
       else if (page === "scan")
-        child = <StudentScan session={session} {...data} notify={notify} />;
+        child = <StudentScan session={session} {...data} notify={notify} refresh={refresh} />;
       else if (page === "history")
         child = <StudentHistory key={route} session={session} {...data} />;
       else if (page === "settings")
@@ -288,6 +307,7 @@ function App() {
             updateAvatar={updateAvatar}
             theme={theme}
             updateTheme={updateTheme}
+            setSession={setSession}
           />
         );
       else child = <NotFound navigate={navigate} session={session} />;
@@ -302,6 +322,7 @@ function App() {
           notify={notify}
           products={data.products}
           loans={data.loans}
+          receipts={data.receipts}
           helpTipIndex={helpTipIndexes.STUDENT}
           setHelpTipIndex={setHelpTipIndex}
         >
@@ -341,12 +362,13 @@ function App() {
             units={data.units}
             navigate={navigate}
             notify={notify}
+            refresh={refresh}
           />
         );
-      else if (page === "scan") child = <AdminScan {...data} notify={notify} />;
+      else if (page === "scan") child = <AdminScan {...data} notify={notify} refresh={refresh} />;
       else if (page === "history") child = <AdminHistory key={route} {...data} />;
       else if (page === "users")
-        child = <AdminUsers {...data} notify={notify} />;
+        child = <AdminUsers {...data} notify={notify} refresh={refresh} />;
       else if (page === "settings")
         child = (
           <SettingsPage
@@ -358,6 +380,7 @@ function App() {
             updateAvatar={updateAvatar}
             theme={theme}
             updateTheme={updateTheme}
+            setSession={setSession}
           />
         );
       else child = <NotFound navigate={navigate} session={session} />;
@@ -372,6 +395,7 @@ function App() {
           notify={notify}
           products={data.products}
           loans={data.loans}
+          receipts={data.receipts}
           helpTipIndex={helpTipIndexes.ADMIN}
           setHelpTipIndex={setHelpTipIndex}
         >
