@@ -64,19 +64,19 @@ class LandingArt extends StatelessWidget {
                           width: 18,
                           height: 18,
                           decoration: BoxDecoration(
-                            gradient: AppPalette.metallic,
                             borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: const Icon(
-                            Icons.inventory_2_outlined,
-                            color: Colors.white,
-                            size: 12,
+                            image: const DecorationImage(
+                              image: AssetImage(
+                                'assets/images/equip_logo_forest.png',
+                              ),
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 5),
                         const Expanded(
                           child: Text(
-                            'STOCKROOM',
+                            'E-QUIP',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

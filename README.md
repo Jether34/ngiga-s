@@ -1,9 +1,14 @@
-# Stockroom Campus Inventory
+# E-QUIP Campus Equipment
 
 Flutter client for Android, iOS, and desktop. The client has been exercised on
 the Android emulator against the C++/Drogon API and MySQL database. The original
 FastAPI/SQLite service remains in `backend/main.py` as a legacy fallback; choose
 the API address at launch with `API_URL`.
+
+Version 1.4.0 uses the E-QUIP name and the logo from
+`avelino's webpage/public/favicon.svg` for the launcher and app artwork. The
+Android package ID remains `com.example.ngiga` so existing installations keep
+their saved data and can update in place.
 
 ## Run on this Windows PC
 
@@ -76,6 +81,6 @@ selection before scanning, borrow confirmation, receipt PDF sharing, return,
 admin loan/return WebSocket notifications, and concurrent attempts to issue the
 same unit. One concurrent request succeeds and the other receives HTTP 409.
 
-Durable offline admin inventory queues, email delivery, and a C++ implementation
+Durable offline admin inventory queues, server-sent push notifications, and a C++ implementation
 of the legacy bulk `POST /transactions` endpoint are not included yet. Borrowing
 and returns are online-only. The Python/SQLite fallback is unchanged.

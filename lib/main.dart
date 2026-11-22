@@ -48,7 +48,7 @@ class LabApp extends StatelessWidget {
   const LabApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Stockroom',
+    title: 'E-QUIP',
     debugShowCheckedModeBanner: false,
     builder: (context, child) => PageGradientBackground(child: child!),
     theme: ThemeData(
@@ -689,7 +689,7 @@ class _HomeState extends State<Home> {
       final bytes = format == 'pdf'
           ? await _pdfReceiptBytes(r)
           : await _pngReceiptBytes(r);
-      final fileName = 'stockroom-${r['receipt_number']}.$format';
+      final fileName = 'equip-${r['receipt_number']}.$format';
       if (Platform.isAndroid) {
         final saved = await const MethodChannel('stockroom/files')
             .invokeMethod<bool>('saveFile', {
@@ -790,8 +790,8 @@ class _HomeState extends State<Home> {
                   ),
                   title: Text(
                     isAdmin && wide
-                        ? 'Stockroom - Campus Inventory'
-                        : 'Stockroom / ${names[tab]}',
+                        ? 'E-QUIP - Campus Equipment'
+                        : 'E-QUIP / ${names[tab]}',
                   ),
                   actions: [
                     if (err != null)
@@ -829,7 +829,7 @@ class _HomeState extends State<Home> {
                                   ),
                                   SizedBox(height: 10),
                                   Text(
-                                    'Stockroom',
+                                    'E-QUIP',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
@@ -1031,7 +1031,7 @@ class _HomeState extends State<Home> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'STOCKROOM  /  FEU TECH',
+                'E-QUIP  /  FEU TECH',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 10,
@@ -2660,18 +2660,14 @@ class _HomeState extends State<Home> {
                 color: AppPalette.deep,
               ),
             ),
-            for (final (value, label, color) in [
-              ('violet', 'Forest', AppPalette.primary),
-              ('silver', 'Silver', const Color(0xffa7a9bd)),
-              ('midnight', 'Midnight', AppPalette.deep),
+            for (final (value, label, asset) in [
+              ('violet', 'Forest', 'assets/images/equip_logo_forest.png'),
+              ('silver', 'Silver', 'assets/images/equip_logo_silver.png'),
+              ('midnight', 'Midnight', 'assets/images/equip_logo_midnight.png'),
             ])
               _settingsTile(
-                leading: CircleAvatar(
-                  backgroundColor: color,
-                  child: const Icon(
-                    Icons.inventory_2_outlined,
-                    color: Colors.white,
-                  ),
+                leading: ClipOval(
+                  child: Image.asset(asset, width: 40, height: 40),
                 ),
                 title: Text(label),
                 trailing: iconVariant == value

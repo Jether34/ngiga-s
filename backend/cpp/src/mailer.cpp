@@ -17,7 +17,7 @@ bool sendEmail(const std::string &recipient, const std::string &subject,
     curl_slist *headers = nullptr;
     curl_mime *mime = curl_mime_init(curl);
     recipients = curl_slist_append(recipients, recipient.c_str());
-    const std::string from = "From: NGIGA Stockroom <" + std::string(username) + ">";
+    const std::string from = "From: E-QUIP <" + std::string(username) + ">";
     const std::string to = "To: <" + recipient + ">";
     const std::string safeSubject = std::regex_replace(subject, std::regex(R"([\r\n])"), " ");
     headers = curl_slist_append(headers, from.c_str());

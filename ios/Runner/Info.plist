@@ -5,13 +5,13 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Scan equipment QR codes and barcodes for borrowing and returns.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Choose a profile photo for your stockroom account.</string>
+	<string>Choose a profile photo for your E-QUIP account.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Ngiga</string>
+	<string>E-QUIP</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -19,7 +19,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>ngiga</string>
+	<string>E-QUIP</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
