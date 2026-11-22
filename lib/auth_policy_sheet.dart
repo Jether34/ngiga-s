@@ -5,11 +5,11 @@ import 'app_palette.dart';
 const _privacySections = <(String, String)>[
   (
     'Information collected',
-    'E-QUIP stores the details you provide when creating an account: your name, email, phone number, year level, program, and home address. It also stores your generated student or user ID, login and account state, scanned item identifiers, loan and return dates, and receipt history.',
+    'ENcoRE stores the details you provide when creating an account: your name, email, phone number, year level, program, and home address. It also stores your generated student or user ID, login and account state, scanned item identifiers, loan and return dates, and receipt history.',
   ),
   (
     'Camera and barcode scans',
-    'The camera is used to read an equipment barcode or QR code. The decoded item code is sent to E-QUIP to look up equipment and record a confirmed loan or return. Camera images and video are not uploaded as part of the scan request.',
+    'The camera is used to read an equipment barcode or QR code. The decoded item code is sent to ENcoRE to look up equipment and record a confirmed loan or return. Camera images and video are not uploaded as part of the scan request.',
   ),
   (
     'How information is used',
@@ -21,7 +21,7 @@ const _privacySections = <(String, String)>[
   ),
   (
     'Storage and retention',
-    'Account and transaction records are stored in the E-QUIP database. Records are kept while needed to operate the account and meet the institution’s inventory and record keeping requirements. Ask your campus administrator about the institution’s retention period.',
+    'Account and transaction records are stored in the ENcoRE database. Records are kept while needed to operate the account and meet the institution’s inventory and record keeping requirements. Ask your campus administrator about the institution’s retention period.',
   ),
   (
     'Your choices',
@@ -29,14 +29,14 @@ const _privacySections = <(String, String)>[
   ),
   (
     'Security and contact',
-    'E-QUIP uses password hashing and authenticated access controls. No online system can guarantee absolute security. For privacy questions, contact your laboratory or campus administrator through your institution’s usual support channel.',
+    'ENcoRE uses password hashing and authenticated access controls. No online system can guarantee absolute security. For privacy questions, contact your laboratory or campus administrator through your institution’s usual support channel.',
   ),
 ];
 
 const _termsSections = <(String, String)>[
   (
     'Your account',
-    'Provide accurate account information and keep your password private. Public sign up creates a student account. E-QUIP assigns your student or user ID after registration.',
+    'Provide accurate account information and keep your password private. Public sign up creates a student account. ENcoRE assigns your student or user ID after registration.',
   ),
   (
     'Borrowing equipment',
@@ -48,11 +48,11 @@ const _termsSections = <(String, String)>[
   ),
   (
     'Accountability',
-    'E-QUIP records the borrower, physical item, barcode, due time, and return status so the borrower and authorized administrators can view the receipt and transaction history. Do not lend an issued item to another person or alter its barcode.',
+    'ENcoRE records the borrower, physical item, barcode, due time, and return status so the borrower and authorized administrators can view the receipt and transaction history. Do not lend an issued item to another person or alter its barcode.',
   ),
   (
     'Acceptable use',
-    'Do not use E-QUIP to access another person’s account, falsify inventory records, or bypass equipment controls. The institution may restrict borrowing access when required to protect equipment or resolve an overdue or disputed loan.',
+    'Do not use ENcoRE to access another person’s account, falsify inventory records, or bypass equipment controls. The institution may restrict borrowing access when required to protect equipment or resolve an overdue or disputed loan.',
   ),
   (
     'Availability and changes',

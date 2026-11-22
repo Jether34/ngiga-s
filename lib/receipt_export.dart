@@ -121,7 +121,7 @@ abstract final class ReceiptExport {
       color: Colors.white,
       weight: FontWeight.w800,
     );
-    drawText('E-QUIP', 364, 43, 230, size: 36, weight: FontWeight.w800);
+    drawText('ENcoRE', 364, 43, 230, size: 36, weight: FontWeight.w800);
     drawText(
       'CAMPUS EQUIPMENT',
       372,

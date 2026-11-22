@@ -76,7 +76,7 @@ class LandingArt extends StatelessWidget {
                         const SizedBox(width: 5),
                         const Expanded(
                           child: Text(
-                            'E-QUIP',
+                            'ENcoRE',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

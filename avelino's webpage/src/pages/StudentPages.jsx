@@ -19,6 +19,11 @@ import {
   QrCode,
   RefreshCw,
   LockKeyhole,
+  Camera,
+  Trash2,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { receipts } from "../data/fixtures";
 import { demoService } from "../services/demoService";
@@ -43,6 +48,7 @@ import {
 } from "../utils/domain";
 import { ProductDetail } from "../components/ProductDetail";
 import { ScanCapture } from "../components/ScanCapture";
+import { optimizeAvatar } from "../utils/preferences";
 
 export function StudentHome({
   session,
@@ -172,6 +178,7 @@ export function StudentHome({
             <button
               key={item}
               className={`chip ${item === category ? "selected" : ""}`}
+              aria-pressed={item === category}
               onClick={() => setCategory(item)}
             >
               {item}
@@ -300,16 +307,27 @@ export function StudentScan({ session, products }) {
     [due, setDue] = useState(""),
     [step, setStep] = useState("capture"),
     [borrowAt, setBorrowAt] = useState(null);
+  const lookupSequence = useRef(0);
   const lookup = async (code) => {
+    const sequence = ++lookupSequence.current;
     setBusy(true);
     setError("");
     setUnit(null);
-    const response = await demoService.lookupUnit(code);
-    setBusy(false);
-    if (response.ok) {
+    setStep("capture");
+    setDue("");
+    setBorrowAt(null);
+    try {
+      const response = await demoService.lookupUnit(code);
+      if (sequence !== lookupSequence.current) return;
+      if (!response.ok) throw new Error(response.error?.message || "Could not find this unit.");
       setUnit(response.data);
       setStep("result");
-    } else setError(response.error.message);
+    } catch (lookupError) {
+      if (sequence !== lookupSequence.current) return;
+      setError(lookupError.message || "Could not find this unit. Try again.");
+    } finally {
+      if (sequence === lookupSequence.current) setBusy(false);
+    }
   };
   const product = productOf(unit, products);
   const review = () => {
@@ -325,13 +343,17 @@ export function StudentScan({ session, products }) {
     setStep("review");
   };
   const confirm = async () => {
+    if (busy) return;
     setBusy(true);
-    const response = await demoService.borrow();
-    setBusy(false);
-    if (response.ok) setStep("done");
-    else {
-      setError(response.error.message);
+    try {
+      const response = await demoService.borrow();
+      if (!response.ok) throw new Error(response.error?.message || "Could not complete the review.");
+      setStep("done");
+    } catch (borrowError) {
+      setError(borrowError.message || "Could not complete the review. Try again.");
       setStep("result");
+    } finally {
+      setBusy(false);
     }
   };
   const reset = () => {
@@ -526,8 +548,24 @@ export function StudentScan({ session, products }) {
 }
 
 export function StudentHistory({ session, loans, units, products }) {
-  const [filter, setFilter] = useState("All"),
-    [selected, setSelected] = useState(null);
+  const requestedFilter = new URLSearchParams(window.location.search).get("filter");
+  const [filter, setFilter] = useState(
+    ["Active", "Returned", "Overdue"].includes(requestedFilter)
+      ? requestedFilter
+      : "All",
+  ),
+    [selected, setSelected] = useState(() =>
+      new URLSearchParams(window.location.search).get("receipt") === "pending"
+        ? loans.find(
+            (loan) =>
+              loan.studentId === session.id &&
+              receipts.some(
+                (receipt) =>
+                  receipt.loanId === loan.id && receipt.renderStatus === "PENDING",
+              ),
+          ) || null
+        : null,
+    );
   const mine = loans.filter((loan) => loan.studentId === session.id);
   const shown = mine.filter(
     (loan) =>
@@ -735,7 +773,32 @@ export function StudentHistory({ session, loans, units, products }) {
   );
 }
 
-export function SettingsPage({ session, role, logout, notify }) {
+export function SettingsPage({ session, role, logout, notify, avatar, updateAvatar, theme, updateTheme }) {
+  const avatarInputRef = useRef(null);
+  const [avatarError, setAvatarError] = useState("");
+  const initials = session.fullName.split(" ").map((part) => part[0]).slice(0, 2).join("");
+  const onAvatarSelected = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const optimized = await optimizeAvatar(file);
+      updateAvatar(optimized);
+      setAvatarError("");
+      notify("Profile picture saved in this browser.");
+    } catch (uploadError) {
+      setAvatarError(uploadError.message || "Could not save the profile picture.");
+    }
+  };
+  const removeAvatar = () => {
+    try {
+      updateAvatar("");
+      setAvatarError("");
+      notify("Profile picture removed.");
+    } catch {
+      setAvatarError("Could not remove the profile picture.");
+    }
+  };
   const [form, setForm] = useState({
     fullName: session.fullName,
     program: session.program || "",
@@ -765,8 +828,13 @@ export function SettingsPage({ session, role, logout, notify }) {
       return;
     }
     setError("");
-    await demoService.saveProfile(form);
-    notify("Profile preview validated. Connect a profile API to save changes.");
+    try {
+      const response = await demoService.saveProfile(form);
+      if (!response.ok) throw new Error(response.error?.message || "Could not validate profile changes.");
+      notify("Profile preview validated. Connect a profile API to save changes.");
+    } catch (saveError) {
+      setError(saveError.message || "Could not validate profile changes. Try again.");
+    }
   };
   const changePassword = (event) => {
     event.preventDefault();
@@ -792,6 +860,7 @@ export function SettingsPage({ session, role, logout, notify }) {
         eyebrow={`${role} / SETTINGS`}
         title="Account settings"
         description="Review your profile, security, and preferences."
+        action={<span className="avatar settings-header-avatar" aria-label="Current profile picture">{avatar ? <img src={avatar} alt="" /> : initials}</span>}
       />
       <DemoNote>
         Profile and security changes are validated locally. They require a
@@ -805,6 +874,19 @@ export function SettingsPage({ session, role, logout, notify }) {
               <h2>Personal information</h2>
             </div>
             <CircleUserRound size={22} />
+          </div>
+          <div className="profile-photo-control">
+            <span className="avatar profile-photo-preview" aria-label="Profile picture preview">{avatar ? <img src={avatar} alt="" /> : initials}</span>
+            <div className="profile-photo-actions">
+              <strong>Profile picture</strong>
+              <p>JPEG, PNG, or WebP · Up to 2 MB. Stored only in this browser.</p>
+              <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onAvatarSelected} aria-label="Choose profile picture" className="visually-hidden" />
+              <div className="profile-photo-buttons">
+                <button type="button" className="button secondary" onClick={() => avatarInputRef.current?.click()}><Camera size={16} /> {avatar ? "Change picture" : "Upload picture"}</button>
+                {avatar && <button type="button" className="button secondary" onClick={removeAvatar}><Trash2 size={16} /> Remove</button>}
+              </div>
+              {avatarError && <small className="field-error" role="alert">{avatarError}</small>}
+            </div>
           </div>
           <form onSubmit={save}>
             <div className="form-grid">
@@ -880,6 +962,21 @@ export function SettingsPage({ session, role, logout, notify }) {
           </form>
         </div>
         <div className="settings-side">
+          <div className="panel">
+            <div className="panel-title">
+              <div><span className="eyebrow">APPEARANCE</span><h2>Theme preference</h2></div>
+              <Sun size={21} />
+            </div>
+            <div className="theme-options" role="radiogroup" aria-label="Theme preference">
+              {[["light", "Light mode", Sun], ["dark", "Dark mode", Moon], ["system", "System default", Monitor]].map(([value, label, Icon]) => (
+                <label className={`theme-option ${theme === value ? "selected" : ""}`} key={value}>
+                  <input type="radio" name="theme" value={value} checked={theme === value} onChange={() => updateTheme(value)} />
+                  <Icon size={18} /><span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <p className="fine-print">Your choice is saved on this device. System default follows your device appearance.</p>
+          </div>
           <div className="panel">
             <div className="panel-title">
               <div>

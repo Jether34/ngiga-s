@@ -84,7 +84,7 @@ object LoanReminders {
 
     fun notify(context: Context, entry: JSONObject, kind: String) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "E-QUIP loan reminders",
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "ENcoRE loan reminders",
             NotificationManager.IMPORTANCE_HIGH))
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
                 android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return

@@ -48,7 +48,7 @@ class LabApp extends StatelessWidget {
   const LabApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'E-QUIP',
+    title: 'ENcoRE',
     debugShowCheckedModeBanner: false,
     builder: (context, child) => PageGradientBackground(child: child!),
     theme: ThemeData(
@@ -689,7 +689,7 @@ class _HomeState extends State<Home> {
       final bytes = format == 'pdf'
           ? await _pdfReceiptBytes(r)
           : await _pngReceiptBytes(r);
-      final fileName = 'equip-${r['receipt_number']}.$format';
+      final fileName = 'encore-${r['receipt_number']}.$format';
       if (Platform.isAndroid) {
         final saved = await const MethodChannel('stockroom/files')
             .invokeMethod<bool>('saveFile', {
@@ -790,8 +790,8 @@ class _HomeState extends State<Home> {
                   ),
                   title: Text(
                     isAdmin && wide
-                        ? 'E-QUIP - Campus Equipment'
-                        : 'E-QUIP / ${names[tab]}',
+                        ? 'ENcoRE - Campus Equipment'
+                        : 'ENcoRE / ${names[tab]}',
                   ),
                   actions: [
                     if (err != null)
@@ -829,7 +829,7 @@ class _HomeState extends State<Home> {
                                   ),
                                   SizedBox(height: 10),
                                   Text(
-                                    'E-QUIP',
+                                    'ENcoRE',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
@@ -1031,7 +1031,7 @@ class _HomeState extends State<Home> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'E-QUIP  /  FEU TECH',
+                'ENcoRE  /  FEU TECH',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 10,

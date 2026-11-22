@@ -67,7 +67,7 @@ class LeaderboardPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         const Text(
-                          'Students making the most of E-QUIP',
+                          'Students making the most of ENcoRE',
                           style: TextStyle(
                             color: AppPalette.muted,
                             fontSize: 13,

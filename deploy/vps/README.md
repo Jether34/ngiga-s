@@ -1,4 +1,4 @@
-# E-QUIP VPS deployment
+# ENcoRE VPS deployment
 
 The API and MySQL database run in the `ngiga-stockroom` Docker Compose project. The API listens only on `127.0.0.1:8765` on the VPS. Nginx forwards `https://pns-sysnnova.cloud/stockroom-api/` to that loopback port; other applications retain their own routes and containers.
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Package,
   ScanLine,
@@ -56,6 +56,7 @@ export function AdminHome({
   navigate,
   refresh,
   loading,
+  dataError,
 }) {
   const active = loans.filter((x) => x.status === "ACTIVE");
   const low = products.filter(
@@ -71,20 +72,19 @@ export function AdminHome({
     [
       Boxes,
       "Physical units",
-      products.reduce((n, x) => n + x.totalUnits, 0),
+      units.length,
       "blue",
     ],
     [
       PackageCheck,
       "Available",
-      products.reduce((n, x) => n + x.availableUnits, 0),
+      units.filter((unit) => unit.status === "AVAILABLE").length,
       "green",
     ],
     [
       PackageOpen,
       "Borrowed",
-      products.reduce((n, x) => n + x.totalUnits - x.availableUnits, 0) -
-        units.filter((x) => x.status === "MAINTENANCE").length,
+      units.filter((unit) => unit.status === "BORROWED").length,
       "amber",
     ],
     [
@@ -115,6 +115,7 @@ export function AdminHome({
         Dashboard counts are fixture data. Refresh re-reads the demo adapter;
         live synchronization needs server events.
       </DemoNote>
+      {dataError && <div className="inline-error" role="alert"><AlertCircle size={17} /> {dataError} <button onClick={refresh}>Retry</button></div>}
       <div className="stats-grid admin-stats">
         {stats.map(([Icon, label, value, tone]) => (
           <StatCard
@@ -140,7 +141,7 @@ export function AdminHome({
               View history <ArrowRight size={16} />
             </button>
           </div>
-          {transactions.slice(0, 5).map((tx) => {
+          {transactions.length ? transactions.slice(0, 5).map((tx) => {
             const unit = units.find((x) => x.id === tx.unitId),
               product = productOf(unit, products),
               student = fixtureUsers.find((x) => x.id === tx.studentId);
@@ -176,7 +177,7 @@ export function AdminHome({
                 <ChevronRight size={16} />
               </button>
             );
-          })}
+          }) : <Empty title="No recent activity" />}
         </section>
         <section className="panel">
           <div className="panel-title">
@@ -186,7 +187,7 @@ export function AdminHome({
             </div>
             <Badge tone="warning">{low.length} items</Badge>
           </div>
-          {low.map((product) => (
+          {low.length ? low.map((product) => (
             <button
               className="stock-row"
               key={product.id}
@@ -203,7 +204,7 @@ export function AdminHome({
                 {product.availableUnits} left
               </Badge>
             </button>
-          ))}
+          )) : <Empty title="Stock is healthy" text="No products are at or below their minimum." />}
           <button
             className="text-button stock-report-link"
             onClick={() => navigate("/admin/products")}
@@ -242,12 +243,8 @@ export function AdminHome({
                   product = productOf(unit, products),
                   student = fixtureUsers.find((x) => x.id === loan.studentId);
                 return (
-                  <tr
-                    key={loan.id}
-                    onClick={() => navigate("/admin/history")}
-                    className="click-row"
-                  >
-                    <td>{loan.loanNumber}</td>
+                  <tr key={loan.id} className="click-row">
+                    <td><button className="table-row-link" onClick={() => navigate("/admin/history")}>{loan.loanNumber}</button></td>
                     <td>
                       <strong>{product?.name}</strong>
                       <small>{unit?.itemCode}</small>
@@ -270,7 +267,7 @@ export function AdminHome({
   );
 }
 
-export function ProductForm({ initial, onClose, onSave }) {
+export function ProductForm({ initial, existingProducts, onClose, onSave }) {
   const [form, setForm] = useState(
     initial || {
       equipmentId: "",
@@ -282,24 +279,47 @@ export function ProductForm({ initial, onClose, onSave }) {
     },
   );
   const [error, setError] = useState("");
-  const submit = (event) => {
+  const [saving, setSaving] = useState(false);
+  const submit = async (event) => {
     event.preventDefault();
+    if (saving) return;
+    const minimum = Number(form.minimumStockLevel);
+    const quantity = Number(form.quantityIntent ?? 0);
     if (
       !form.equipmentId.trim() ||
       !form.name.trim() ||
       !form.category.trim() ||
       !form.description.trim() ||
-      Number(form.minimumStockLevel) < 0 ||
-      Number(form.quantityIntent) < 0
+      form.minimumStockLevel === "" ||
+      !Number.isSafeInteger(minimum) || minimum < 0 ||
+      !Number.isSafeInteger(quantity) || quantity < 0
     ) {
-      setError("Complete every field with non-negative stock values.");
+      setError("Complete every field with non-negative whole stock values.");
       return;
     }
-    onSave({
-      ...form,
-      minimumStockLevel: Number(form.minimumStockLevel),
-      quantityIntent: Number(form.quantityIntent),
-    });
+    if (existingProducts.some((product) =>
+      product.id !== initial?.id &&
+      product.equipmentId.toLowerCase() === form.equipmentId.trim().toLowerCase()
+    )) {
+      setError("Equipment ID already exists. Enter a unique ID.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        ...form,
+        equipmentId: form.equipmentId.trim(),
+        name: form.name.trim(),
+        category: form.category.trim(),
+        description: form.description.trim(),
+        minimumStockLevel: minimum,
+        quantityIntent: quantity,
+      });
+    } catch (saveError) {
+      setError(saveError.message || "Could not validate this product. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <Modal title={initial ? "Edit product" : "Add product"} onClose={onClose}>
@@ -372,8 +392,8 @@ export function ProductForm({ initial, onClose, onSave }) {
           <button type="button" className="button secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="button">
-            Preview {initial ? "changes" : "product"} <Check size={17} />
+          <button className="button" disabled={saving}>
+            {saving ? "Checking…" : `Preview ${initial ? "changes" : "product"}`} <Check size={17} />
           </button>
         </div>
       </form>
@@ -391,7 +411,9 @@ export function AdminProducts({
   const [search, setSearch] = useState(""),
     [category, setCategory] = useState("All"),
     [sort, setSort] = useState("name"),
-    [showLow, setShowLow] = useState(false),
+    [showLow, setShowLow] = useState(
+      () => new URLSearchParams(window.location.search).get("lowStock") === "1",
+    ),
     [showArchived, setShowArchived] = useState(false),
     [selected, setSelected] = useState(null),
     [editing, setEditing] = useState(undefined),
@@ -415,7 +437,8 @@ export function AdminProducts({
           : a.category.localeCompare(b.category),
     );
   const save = async (item) => {
-    await demoService.saveProduct(item);
+    const response = await demoService.saveProduct(item);
+    if (!response.ok) throw new Error(response.error?.message || "Could not validate this product.");
     if (editing)
       setProducts((old) =>
         old.map((x) => (x.id === editing.id ? { ...x, ...item } : x)),
@@ -487,6 +510,7 @@ export function AdminProducts({
         </select>
         <button
           className={`button secondary ${showLow ? "active-filter" : ""}`}
+          aria-pressed={showLow}
           onClick={() => setShowLow(!showLow)}
         >
           <Filter size={16} /> Low stock
@@ -600,6 +624,7 @@ export function AdminProducts({
       {editing !== undefined && (
         <ProductForm
           initial={editing}
+          existingProducts={products}
           onClose={() => setEditing(undefined)}
           onSave={save}
         />
@@ -643,9 +668,9 @@ export function AdminProducts({
 }
 
 export function ReceiveMode({ products, units, notify, code, setCode }) {
-  const [productId, setProductId] = useState(products[0]?.id || ""),
+  const [productId, setProductId] = useState(products.find((item) => !item.archived)?.id || ""),
     [quantity, setQuantity] = useState(1),
-    [date, setDate] = useState(new Date().toISOString().slice(0, 10)),
+    [date, setDate] = useState(dateInput().slice(0, 10)),
     [started, setStarted] = useState(false),
     [entries, setEntries] = useState([]),
     [serial, setSerial] = useState(""),
@@ -653,7 +678,7 @@ export function ReceiveMode({ products, units, notify, code, setCode }) {
     [busy, setBusy] = useState(false);
   const start = () => {
     if (
-      !productId ||
+      !products.some((item) => item.id === productId && !item.archived) ||
       !Number.isInteger(Number(quantity)) ||
       Number(quantity) <= 0 ||
       !date ||
@@ -695,24 +720,24 @@ export function ReceiveMode({ products, units, notify, code, setCode }) {
       return;
     }
     setBusy(true);
-    const response = await demoService.receiveUnit({
-      productId,
-      itemCode: c,
-      serialNumber: s,
-      receivedAt: date,
-    });
-    setBusy(false);
-    if (!response.ok) {
-      setError(response.error.message);
-      return;
+    try {
+      const response = await demoService.receiveUnit({
+        productId,
+        itemCode: c,
+        serialNumber: s,
+        receivedAt: date,
+      });
+      if (!response.ok) throw new Error(response.error?.message || "Could not validate this unit.");
+      setEntries((current) => [...current, { itemCode: c, serialNumber: s }]);
+      setCode("");
+      setSerial("");
+      setError("");
+      notify(`Unit ${entries.length + 1} of ${quantity} validated in demo preview.`);
+    } catch (receiveError) {
+      setError(receiveError.message || "Could not validate this unit. Try again.");
+    } finally {
+      setBusy(false);
     }
-    setEntries([...entries, { itemCode: c, serialNumber: s }]);
-    setCode("");
-    setSerial("");
-    setError("");
-    notify(
-      `Unit ${entries.length + 1} of ${quantity} validated in demo preview.`,
-    );
   };
   const done = entries.length >= Number(quantity);
   return (
@@ -878,25 +903,33 @@ export function IssueMode({ products, notify }) {
     [step, setStep] = useState("capture"),
     [borrowAt, setBorrowAt] = useState(null),
     [busy, setBusy] = useState(false);
+  const lookupSequence = useRef(0);
   const students = fixtureUsers.filter(
     (x) => x.role === "STUDENT" && x.accountStatus === "Active",
   );
   const student = students.find((x) => x.id === studentId);
   const lookup = async (code) => {
+    const sequence = ++lookupSequence.current;
     setBusy(true);
     setError("");
-    const response = await demoService.lookupUnit(code);
-    setBusy(false);
-    if (!response.ok) {
+    setStep("capture");
+    setUnit(null);
+    setDue("");
+    setBorrowAt(null);
+    try {
+      const response = await demoService.lookupUnit(code);
+      if (sequence !== lookupSequence.current) return;
+      if (!response.ok) throw new Error(response.error?.message || "Could not find this unit.");
+      setUnit(response.data);
+      if (response.data.status !== "AVAILABLE")
+        setError("This unit is unavailable. Issue is blocked until it is available.");
+    } catch (lookupError) {
+      if (sequence !== lookupSequence.current) return;
       setUnit(null);
-      setError(response.error.message);
-      return;
+      setError(lookupError.message || "Could not find this unit. Try again.");
+    } finally {
+      if (sequence === lookupSequence.current) setBusy(false);
     }
-    setUnit(response.data);
-    if (response.data.status !== "AVAILABLE")
-      setError(
-        "This unit is unavailable. Issue is blocked until it is available.",
-      );
   };
   const review = () => {
     const now = new Date();
@@ -917,13 +950,18 @@ export function IssueMode({ products, notify }) {
     setStep("review");
   };
   const confirm = async () => {
+    if (busy) return;
     setBusy(true);
-    const response = await demoService.adminIssue();
-    setBusy(false);
-    if (response.ok) {
+    try {
+      const response = await demoService.adminIssue();
+      if (!response.ok) throw new Error(response.error?.message || "Could not complete the issue review.");
       setStep("done");
       notify("Issue preview completed. No loan was saved.");
-    } else setError(response.error.message);
+    } catch (issueError) {
+      setError(issueError.message || "Could not complete the issue review. Try again.");
+    } finally {
+      setBusy(false);
+    }
   };
   const product = productOf(unit, products);
   return (
@@ -1095,26 +1133,35 @@ export function ReturnMode({ products, loans, notify }) {
     [error, setError] = useState(""),
     [step, setStep] = useState("capture"),
     [busy, setBusy] = useState(false);
+  const lookupSequence = useRef(0);
   const lookup = async (code) => {
+    const sequence = ++lookupSequence.current;
     setBusy(true);
     setError("");
-    const response = await demoService.lookupUnit(code);
-    setBusy(false);
-    if (!response.ok) {
+    setStep("capture");
+    setUnit(null);
+    setLoan(null);
+    setTime(dateInput());
+    setCondition("Good");
+    try {
+      const response = await demoService.lookupUnit(code);
+      if (sequence !== lookupSequence.current) return;
+      if (!response.ok) throw new Error(response.error?.message || "Could not find this unit.");
+      const active = loans.find(
+        (x) => x.unitId === response.data.id && x.status === "ACTIVE",
+      );
+      setUnit(response.data);
+      setLoan(active || null);
+      if (!active)
+        setError("No active loan matches this item. It may already have been returned or was never issued.");
+    } catch (lookupError) {
+      if (sequence !== lookupSequence.current) return;
       setUnit(null);
       setLoan(null);
-      setError(response.error.message);
-      return;
+      setError(lookupError.message || "Could not find this unit. Try again.");
+    } finally {
+      if (sequence === lookupSequence.current) setBusy(false);
     }
-    const active = loans.find(
-      (x) => x.unitId === response.data.id && x.status === "ACTIVE",
-    );
-    setUnit(response.data);
-    setLoan(active || null);
-    if (!active)
-      setError(
-        "No active loan matches this item. It may already have been returned or was never issued.",
-      );
   };
   const review = () => {
     if (!loan) {
@@ -1136,17 +1183,20 @@ export function ReturnMode({ products, loans, notify }) {
     setStep("review");
   };
   const confirm = async () => {
+    if (busy) return;
     setBusy(true);
-    const response = await demoService.adminReturn();
-    setBusy(false);
-    if (response.ok) {
+    try {
+      const response = await demoService.adminReturn();
+      if (!response.ok) throw new Error(response.error?.message || "Could not complete the return review.");
       setStep("done");
       notify(
         "Return preview completed. No inventory or loan record was changed.",
       );
-    } else {
-      setError(response.error.message);
+    } catch (returnError) {
+      setError(returnError.message || "Could not complete the return review. Try again.");
       setStep("capture");
+    } finally {
+      setBusy(false);
     }
   };
   const product = productOf(unit, products),
@@ -1336,8 +1386,24 @@ export function AdminScan({ products, units, loans, notify }) {
             role="tab"
             aria-selected={mode === name}
             aria-controls="scan-mode-panel"
+            tabIndex={mode === name ? 0 : -1}
             className={mode === name ? "active" : ""}
             onClick={() => setMode(name)}
+            onKeyDown={(event) => {
+              const tabs = [...event.currentTarget.parentElement.querySelectorAll('[role="tab"]')];
+              const index = tabs.indexOf(event.currentTarget);
+              const nextIndex = event.key === "ArrowRight"
+                ? (index + 1) % tabs.length
+                : event.key === "ArrowLeft"
+                  ? (index - 1 + tabs.length) % tabs.length
+                  : event.key === "Home"
+                    ? 0
+                    : event.key === "End" ? tabs.length - 1 : -1;
+              if (nextIndex < 0) return;
+              event.preventDefault();
+              tabs[nextIndex].focus();
+              setMode(["Receive", "Issue", "Return"][nextIndex]);
+            }}
           >
             <Icon size={18} />{" "}
             {name === "Receive"
@@ -1401,9 +1467,14 @@ export function AdminScan({ products, units, loans, notify }) {
 }
 
 export function AdminHistory({ transactions, units, products, loans }) {
+  const requestedStatus = new URLSearchParams(window.location.search).get("status");
   const [search, setSearch] = useState(""),
     [type, setType] = useState("All"),
-    [status, setStatus] = useState("All"),
+    [status, setStatus] = useState(
+      ["Active", "Returned", "Overdue", "None"].includes(requestedStatus)
+        ? requestedStatus
+        : "All",
+    ),
     [student, setStudent] = useState("All"),
     [date, setDate] = useState(""),
     [sort, setSort] = useState("newest"),
@@ -1489,6 +1560,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
           </select>
           <input
             type="date"
+            className={date ? undefined : "date-empty"}
             value={date}
             onChange={(e) => setDate(e.target.value)}
             aria-label="Transaction date"
@@ -1529,13 +1601,9 @@ export function AdminHistory({ transactions, units, products, loans }) {
                     person = fixtureUsers.find((x) => x.id === tx.studentId),
                     loan = loans.find((x) => x.id === tx.loanId);
                   return (
-                    <tr
-                      key={tx.id}
-                      className="click-row"
-                      onClick={() => setSelected(tx)}
-                    >
+                    <tr key={tx.id} className="click-row">
                       <td>
-                        <Badge
+                        <button className="table-row-link" onClick={() => setSelected(tx)} aria-label={`View ${tx.type.toLowerCase()} transaction for ${product?.name || "equipment"}`}><Badge
                           tone={
                             tx.type === "RETURN"
                               ? "success"
@@ -1545,7 +1613,7 @@ export function AdminHistory({ transactions, units, products, loans }) {
                           }
                         >
                           {tx.type}
-                        </Badge>
+                        </Badge></button>
                       </td>
                       <td>
                         <strong>{product?.name}</strong>
@@ -1649,7 +1717,8 @@ export function AdminUsers({ loans, units, products, notify }) {
     [program, setProgram] = useState("All"),
     [year, setYear] = useState("All"),
     [selected, setSelected] = useState(null),
-    [statusPreview, setStatusPreview] = useState({});
+    [statusPreview, setStatusPreview] = useState({}),
+    [statusBusy, setStatusBusy] = useState(false);
   const students = fixtureUsers.filter((x) => x.role === "STUDENT");
   const shown = students.filter(
     (x) =>
@@ -1720,13 +1789,9 @@ export function AdminUsers({ loans, units, products, notify }) {
               </thead>
               <tbody>
                 {shown.map((student) => (
-                  <tr
-                    className="click-row"
-                    key={student.id}
-                    onClick={() => setSelected(student)}
-                  >
+                  <tr className="click-row" key={student.id}>
                     <td>
-                      <div className="table-user">
+                      <button className="table-user table-row-link" onClick={() => setSelected(student)} aria-label={`View ${student.fullName}'s profile`}>
                         <span className="avatar small-avatar">
                           {student.fullName
                             .split(" ")
@@ -1737,7 +1802,7 @@ export function AdminUsers({ loans, units, products, notify }) {
                           <strong>{student.fullName}</strong>
                           <small>{student.schoolEmail}</small>
                         </span>
-                      </div>
+                      </button>
                     </td>
                     <td>{student.studentId}</td>
                     <td>{student.program}</td>
@@ -1861,17 +1926,25 @@ export function AdminUsers({ loans, units, products, notify }) {
             </button>
             <button
               className="button"
+              disabled={statusBusy}
               onClick={async () => {
+                if (statusBusy) return;
                 const next =
                   (statusPreview[selected.id] || selected.accountStatus) ===
                   "Active"
                     ? "Suspended"
                     : "Active";
-                await demoService.setStudentStatus(selected.id, next);
-                setStatusPreview((old) => ({ ...old, [selected.id]: next }));
-                notify(
-                  `Account ${next.toLowerCase()} preview only; no server change.`,
-                );
+                setStatusBusy(true);
+                try {
+                  const response = await demoService.setStudentStatus(selected.id, next);
+                  if (!response.ok) throw new Error(response.error?.message || "Could not validate account status.");
+                  setStatusPreview((old) => ({ ...old, [selected.id]: next }));
+                  notify(`Account ${next.toLowerCase()} preview only; no server change.`);
+                } catch (statusError) {
+                  notify(statusError.message || "Could not validate account status. Try again.", "error");
+                } finally {
+                  setStatusBusy(false);
+                }
               }}
             >
               Preview{" "}

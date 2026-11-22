@@ -329,7 +329,7 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             SizedBox(height: h * .085),
             _heading(
-              'E-QUIP for your campus',
+              'ENcoRE for your campus',
               'Borrow, track, and return equipment\nwith every item in one place.',
             ),
             const SizedBox(height: 35),
@@ -652,7 +652,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               recognizer: TapGestureRecognizer()
                                 ..onTap = () => _policy('Privacy Policy'),
                             ),
-                            const TextSpan(text: ' of E-QUIP'),
+                            const TextSpan(text: ' of ENcoRE'),
                           ],
                         ),
                       ),

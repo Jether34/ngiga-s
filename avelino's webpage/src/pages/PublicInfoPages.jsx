@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  ArrowLeft,
   ArrowRight,
   Boxes,
   CalendarCheck2,
@@ -24,9 +23,6 @@ function InfoLayout({ navigate, current, eyebrow, title, intro, children }) {
     <div className="welcome-page info-page">
       <PublicHeader navigate={navigate} current={current} />
       <main className="info-main">
-        <button className="info-home-link" type="button" onClick={() => navigate("/")}>
-          <ArrowLeft size={17} /> Back to home
-        </button>
         <div className="info-hero">
           <span className="pill"><Sparkles size={15} /> Made for campus life</span>
           <span className="eyebrow">{eyebrow}</span>

@@ -52,7 +52,7 @@ class MainActivity : FlutterActivity() {
                                 put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
                                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
                                 put(MediaStore.Images.Media.RELATIVE_PATH,
-                                    Environment.DIRECTORY_PICTURES + "/E-QUIP")
+                                    Environment.DIRECTORY_PICTURES + "/ENcoRE")
                             }
                             val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                                 values) ?: throw IllegalStateException("Gallery is unavailable")

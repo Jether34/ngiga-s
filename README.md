@@ -1,11 +1,11 @@
-# E-QUIP Campus Equipment
+# ENcoRE Campus Equipment
 
 Flutter client for Android, iOS, and desktop. The client has been exercised on
 the Android emulator against the C++/Drogon API and MySQL database. The original
 FastAPI/SQLite service remains in `backend/main.py` as a legacy fallback; choose
 the API address at launch with `API_URL`.
 
-Version 1.4.0 uses the E-QUIP name and the logo from
+Version 1.5.0 uses the ENcoRE name and the logo from
 `avelino's webpage/public/favicon.svg` for the launcher and app artwork. The
 Android package ID remains `com.example.ngiga` so existing installations keep
 their saved data and can update in place.
